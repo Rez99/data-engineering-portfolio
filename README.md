@@ -1,20 +1,20 @@
-# data-engineering-portfolio
+# Data Engineering Portfolio
 
-This portfolio documents my transition from 12 years in Data Science to Data Engineering.
+This portfolio documents my transition from Data Science to Data Engineering through a series of projects that build on one another.
 
-Rather than focusing on individual tools, the projects are organized around the evolution of modern data platforms:
+Rather than treating data engineering as a collection of disconnected tools, the projects follow the lifecycle of a modern data platform:
 
-1. **Lakehouse Fundamentals** — building an analytical platform from an operational database.
-2. **Cloud & Orchestration** — productionizing pipelines in the cloud with scheduling, monitoring, and automation.
-3. **AI Data Infrastructure** — building retrieval systems that transform unstructured data into assets consumable by LLMs.
+1. **Build a Lakehouse** — transform operational data into an analytical platform.
+2. **Productionize the Lakehouse** — deploy, orchestrate, monitor, and operate the platform in the cloud.
+3. **AI Data Infrastructure** — extend the platform to support real-time and AI-powered applications.
 
-The goal is not to demonstrate familiarity with a collection of technologies. The goal is to demonstrate the ability to reason about data systems, understand architectural tradeoffs, and choose appropriate tools for a given problem.
+The focus throughout is not on using as many technologies as possible. The focus is on understanding the architectural decisions, tradeoffs, and patterns that underpin modern data systems.
 
 ---
 
-## Project 1 — Lakehouse Fundamentals
+## Project 1: Build a Lakehouse
 
-Build a modern analytical platform starting from a normalized transactional database.
+Starting from a normalized transactional database, build a modern analytical platform using open table formats and analytics engineering principles.
 
 ```text
 Postgres (3NF)
@@ -30,23 +30,22 @@ Star Schema
 Analytics
 ```
 
-Key concepts:
+Topics covered:
 
 * OLTP vs OLAP
-* ELT pipelines
-* Columnar storage
+* ELT
 * Parquet
 * Apache Iceberg
 * Data modeling
 * Star schemas
-* dbt transformations
+* dbt
 * Data quality testing
 
 ---
 
-## Project 2 — Cloud & Orchestration
+## Project 2: Productionize the Lakehouse
 
-Take the local lakehouse architecture and operate it in a production-style environment.
+Take the local lakehouse architecture and operate it as a production system.
 
 ```text
 Sources
@@ -57,64 +56,64 @@ Orchestration
     ↓
 Transformations
     ↓
-Monitoring & Alerts
+Monitoring & Alerting
 ```
 
-Key concepts:
+Topics covered:
 
 * Cloud infrastructure
 * Object storage
-* IAM and permissions
+* IAM
 * Workflow orchestration
 * Scheduling and retries
-* Observability
-* Infrastructure as Code
+* Monitoring and observability
 * CI/CD
+* Infrastructure as Code
 
 ---
 
-## Project 3 — AI Data Infrastructure
+## Project 3: AI Data Infrastructure
 
-Build a retrieval platform that continuously transforms unstructured information into knowledge that can be consumed by AI applications.
+Build a platform that continuously transforms unstructured data into knowledge that can be consumed by AI systems.
 
 ```text
-Documents
-     ↓
-Ingestion
-     ↓
+Documents & Events
+         ↓
+Streaming Ingestion
+         ↓
 Chunking
-     ↓
+         ↓
 Embeddings
-     ↓
+         ↓
 Vector Store
-     ↓
+         ↓
 Retrieval
-     ↓
+         ↓
 LLM Applications
 ```
 
-Key concepts:
+Topics covered:
 
-* Unstructured data pipelines
+* Streaming data pipelines
+* Event-driven architectures
 * Embedding generation
 * Vector databases
 * Semantic search
 * Retrieval-Augmented Generation (RAG)
-* Event-driven architectures
-* Streaming ingestion
-* AI infrastructure
+* AI data platforms
+* Real-time knowledge systems
 
 ---
 
-## Architectural Themes
+## Themes
 
-Across all projects, I focus on the following questions:
+Across all projects, I focus on a small set of recurring questions:
 
 * Why choose one architecture over another?
-* When should data be modeled, transformed, or denormalized?
+* When should data be normalized or denormalized?
 * When is batch processing sufficient?
-* When does streaming become necessary?
-* What are the tradeoffs between cost, complexity, performance, and maintainability?
-* How do modern lakehouse and AI systems differ from traditional warehouse architectures?
+* When does streaming provide value?
+* How do modern lakehouse architectures differ from traditional warehouses?
+* How do AI applications change the way data platforms are designed?
 
-The emphasis throughout is on understanding systems and tradeoffs, not simply learning tools.
+The objective is to develop practical experience building systems while understanding the tradeoffs that drive architectural decisions.
