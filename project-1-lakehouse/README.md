@@ -12,7 +12,7 @@ To answer those questions, I benchmarked the same 42 million row ecommerce click
 ```mermaid
 xychart-beta
     title "Benchmark Query Runtime (seconds)"
-    x-axis ["File Analytics", "OLTP", "OLAP", "Lakehouse"]
+    x-axis ["File Analytics", "OLTP Database", "OLAP Database", "Lakehouse Architecture"]
     y-axis "Seconds" 0 --> 60
     bar [70, 59, 0.1, 0.1]
 ```
@@ -24,7 +24,7 @@ xychart-beta
 |3|OLAP Database|DuckDB|🟢 Low|🟢 Low|🟢 Low|Columnar OLAP systems dramatically reduce storage and query costs for analytics.|
 |4|Lakehoue Architecture|DuckDB + Iceberg + Polaris|🟢 Low|🟢 Low|🟢 Low|Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities.|
 
-**File Analytics (Pandas + CSV):** Pandas provided a simple and flexible starting point. The compressed CSV occupied 1.62 GB on disk and required a 69 second load before analysis could begin. Queries were fast once the data was loaded, but the entire dataset had to fit in memory, creating a fundamental scalability constraint as data volumes grow.
+**File Analytics (Pandas + compressed CSV):** Pandas provided a simple and flexible starting point. The compressed CSV occupied 1.62 GB on disk and required a 69 second load before analysis could begin. Queries were fast once the data was loaded, but the entire dataset had to fit in memory, creating a fundamental scalability constraint as data volumes grow.
 
 **OLTP Database (PostgreSQL):** Loading the same dataset into PostgreSQL increased storage requirements to 6.85 GB and the benchmark query took 59 seconds to complete. While PostgreSQL excels at transactions and operational workloads, the benchmark demonstrated that row-oriented databases are not optimized for large analytical scans.
 
