@@ -48,8 +48,6 @@ sequenceDiagram
     participant Transform as Transformation Framework
     participant Consumption
 
-    Note over Orchestrator: Orchestrator
-
     rect rgb(255, 240, 240)
         Orchestrator->>Source: Request download
         Source->>ObjectStorage: Download file(s)
