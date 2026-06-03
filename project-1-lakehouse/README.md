@@ -10,7 +10,7 @@ To answer those questions, I benchmarked the same 42 million row ecommerce click
 ```mermaid
 xychart-beta
     title "Benchmark Query Runtime (seconds)"
-    x-axis ["Pandas", "PostgreSQL", "DuckDB", "Lakehouse"]
+    x-axis ["File Analytics", "OLTP", "OLAP", "Lakehouse"]
     y-axis "Seconds" 0 --> 60
     bar [70, 59, 0.1, 0.1]
 ```
