@@ -42,7 +42,6 @@ sequenceDiagram
     autonumber
 
     participant Orchestrator
-    participant Source
     participant ObjectStorage as Object Storage
     participant ComputeEngine as Compute Engine
     participant Catalog as Metadata Catalog
@@ -50,10 +49,8 @@ sequenceDiagram
     participant Consumption
 
     rect rgb(255, 240, 240)
-        Orchestrator->>Source: Request download
-        Source->>ObjectStorage: Download file(s)
+        Orchestrator->>ObjectStorage: DAG (Extract data)
         Note over ObjectStorage: Bronze
-        ObjectStorage-->>Orchestrator: File available
     end
 
     rect rgb(240, 255, 240)
@@ -63,7 +60,6 @@ sequenceDiagram
         Note over ObjectStorage: Silver
         ComputeEngine->>Catalog: Register/update table
         Catalog-->>ComputeEngine: Table committed
-        ComputeEngine-->>Orchestrator: Load complete
     end
 
     rect rgb(240, 240, 255)
@@ -71,13 +67,14 @@ sequenceDiagram
         Transform->>ComputeEngine: Execute SQL
         ComputeEngine->>ObjectStorage: Write transformed table
         Note over ObjectStorage: Gold
-        ObjectStorage-->>Orchestrator: Transformation complete
     end
 
     rect rgb(255, 255, 240)
        Consumption->>ComputeEngine: Query Gold data
        ComputeEngine-->>Consumption: Results
     end
+
+    
 
     
 ```
