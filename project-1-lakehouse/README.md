@@ -45,6 +45,7 @@ sequenceDiagram
     participant Source
     participant ObjectStorage as Object Storage
     participant ComputeEngine as Compute Engine
+    participant Catalog as Metadata Catalog
     participant Transform as Transformation Framework
     participant Consumption
 
@@ -57,9 +58,12 @@ sequenceDiagram
 
     rect rgb(240, 255, 240)
         Orchestrator->>ComputeEngine: Request load
-        ComputeEngine->>ObjectStorage: Write open table
+        ComputeEngine->>ObjectStorage: Read Bronze files
+        ComputeEngine->>ObjectStorage: Write open table files
         Note over ObjectStorage: Silver
-        ObjectStorage-->>Orchestrator: Table available
+        ComputeEngine->>Catalog: Register/update table
+        Catalog-->>ComputeEngine: Table committed
+        ComputeEngine-->>Orchestrator: Load complete
     end
 
     rect rgb(240, 240, 255)
@@ -74,5 +78,7 @@ sequenceDiagram
        Consumption->>ComputeEngine: Query Gold data
        ComputeEngine-->>Consumption: Results
     end
+
+    
 ```
     
