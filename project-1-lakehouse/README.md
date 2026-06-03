@@ -34,5 +34,6 @@ xychart-beta
 
 **Lakehouse (DuckDB + Iceberg + Polaris):** Query performance remained essentially unchanged at 0.13 seconds. This was expected because the benchmark dataset consisted of a single Parquet file, leaving little opportunity for Iceberg's metadata layer to improve query planning. In larger deployments containing thousands of files, Iceberg can accelerate analytics by allowing query engines to identify relevant files through metadata rather than discovering and inspecting every file individually. It also introduces capabilities such as schema evolution, time travel, governance, and ACID transactions.
 
+## Summary
 The benchmark validated two important ideas. First, OLAP databases can dramatically reduce both storage and compute costs compared with traditional OLTP systems for analytical workloads. Second, lakehouses solve a different problem: managing analytical data at scale through metadata, governance, and intelligent file organization.
 
