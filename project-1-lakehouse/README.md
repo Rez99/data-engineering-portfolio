@@ -54,7 +54,7 @@ sequenceDiagram
     end
 
     rect rgb(240, 255, 240)
-        Orchestrator->>ComputeEngine: Request load
+        Orchestrator->>ComputeEngine: DAG (Load data)
         ComputeEngine->>ObjectStorage: Read Bronze files
         ComputeEngine->>ObjectStorage: Write open table files
         Note over ObjectStorage: Silver
@@ -63,7 +63,7 @@ sequenceDiagram
     end
 
     rect rgb(240, 240, 255)
-        Orchestrator->>Transform: Request transformation
+        Orchestrator->>Transform: DAG (Transform data)
         Transform->>ComputeEngine: Execute SQL
         ComputeEngine->>ObjectStorage: Write transformed table
         Note over ObjectStorage: Gold
