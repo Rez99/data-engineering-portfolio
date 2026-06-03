@@ -5,7 +5,7 @@
 
 cd ~/data-engineering-portfolio/project-1-lakehouse/benchmark
 
-docker compose down -v
+docker compose down
 curl -s https://raw.githubusercontent.com/apache/polaris/refs/heads/main/site/content/guides/quickstart/docker-compose.yml \
 | docker compose -f - down -v
 
@@ -22,7 +22,7 @@ docker compose exec python python 0_download_dataset.py
 docker compose exec python bash
 ```
 ```bash
-ls /tmp/data
+ls /data
 exit
 ```
 
@@ -55,25 +55,28 @@ docker compose exec python python 2_benchmark_postgres.py
 #Query time: 7.39 s
 #Query time: 59.32 s
 ```
-
-# DuckDB benchmark (with Parquet)
 ```bash
-docker compose exec duckdb duckdb
+docker compose exec python pgcli postgres://root:root@postgres:5432/marketplace
+```
+
+
+# DuckDB benchmark
+```bash
+docker compose exec duckdb duckdb /data/benchmark.duckdb
 ```
 ```bash
-COPY (
-    SELECT *
-    FROM read_csv_auto('/data/2019-Oct.csv.gz')
-)
-TO '/data/2019-Oct.parquet'
-(FORMAT PARQUET);
+CREATE TABLE events AS
+SELECT *
+FROM read_csv_auto('/data/2019-Oct.csv.gz');
 
 .timer on
 
-SELECT event_type, COUNT(DISTINCT user_session)
-                               FROM read_parquet('/data/2019-Oct.parquet')
-                               WHERE event_time::date = '2019-10-01'
-                               GROUP BY event_type;
+SELECT
+    event_type,
+    COUNT(DISTINCT user_session)
+FROM events
+WHERE event_time::DATE = '2019-10-01'
+GROUP BY event_type;
 
 #┌────────────┬──────────────────────────────┐
 #│ event_type │ count(DISTINCT user_session) │

@@ -3,7 +3,7 @@ import gzip
 import pandas as pd
 import time
 
-DATA_DIR = Path("/tmp/data")
+DATA_DIR = Path("/data")
 DATA_FILE = DATA_DIR / "2019-Oct.csv.gz"
 
 def main():
