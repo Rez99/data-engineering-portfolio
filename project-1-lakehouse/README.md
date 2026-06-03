@@ -37,3 +37,44 @@ xychart-beta
 ## Summary
 The benchmark validated two important ideas. First, OLAP databases can dramatically reduce both storage and compute costs compared with traditional OLTP systems for analytical workloads. Second, lakehouses solve a different problem: managing analytical data at scale through metadata, governance, and intelligent file organization.
 
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Orchestrator
+    participant Source
+    participant ObjectStorage as Object Storage
+    participant ComputeEngine as Compute Engine
+    participant Transform as Transformation Framework
+    participant Consumption
+
+    Note over Orchestrator: Orchestrator
+
+    rect rgb(255, 240, 240)
+        Orchestrator->>Source: Request download
+        Source->>ObjectStorage: Download file(s)
+        Note over ObjectStorage: Bronze
+        ObjectStorage-->>Orchestrator: File available
+    end
+
+    rect rgb(240, 255, 240)
+        Orchestrator->>ComputeEngine: Request load
+        ComputeEngine->>ObjectStorage: Write open table
+        Note over ObjectStorage: Silver
+        ObjectStorage-->>Orchestrator: Table available
+    end
+
+    rect rgb(240, 240, 255)
+        Orchestrator->>Transform: Request transformation
+        Transform->>ComputeEngine: Execute SQL
+        ComputeEngine->>ObjectStorage: Write transformed table
+        Note over ObjectStorage: Gold
+        ObjectStorage-->>Orchestrator: Transformation complete
+    end
+
+    rect rgb(255, 255, 240)
+       Consumption->>ComputeEngine: Query Gold data
+       ComputeEngine-->>Consumption: Results
+    end
+```
+    
