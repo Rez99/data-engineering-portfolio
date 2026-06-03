@@ -1,0 +1,49 @@
+volumes:
+  # Shared Docker-managed volume.
+  # Visible to all containers at /data.
+  # Not stored in the project directory on your laptop.
+  # Remove with: docker compose down -v
+  benchmark_data:
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: benchmark-postgres
+    environment:
+      POSTGRES_USER: "root"
+      POSTGRES_PASSWORD: "root"
+      POSTGRES_DB: "marketplace"
+    ports:
+      - "5433:5432"
+    volumes:
+      # Shared data volume for downloaded files.
+      - benchmark_data:/data
+
+  python:
+    build: .
+    container_name: benchmark-python
+    # volumes:
+    # Files in local ./benchmark appear inside the container at /app.
+    # Files created in /app appear in local ./benchmark.
+    # /data is a Docker-managed volume shared across containers.
+    volumes:
+      - .:/app
+      - benchmark_data:/data
+    # working_dir:
+    # When commands run inside this container, pretend we already did cd /app.
+    working_dir: /app
+    # command:
+    # The command to run when the container starts.
+    # Hack to keep container running so we can explore within.
+    command: tail -f /dev/null
+
+  duckdb:
+    image: duckdb/duckdb:latest
+    container_name: benchmark-duckdb
+    volumes:
+      - .:/app
+      - benchmark_data:/data
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    network_mode: host
