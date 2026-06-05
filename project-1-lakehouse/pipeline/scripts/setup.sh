@@ -6,24 +6,13 @@ echo '✅ Docker ready'
 
 # Clean up any existing containers and volumes
 echo 'Clean up environment...'
-docker compose -f ../docker/docker-airflow/docker-compose.yaml down -v
+docker compose -f ../docker/docker-airflow/docker-compose.yaml down -v > /dev/null 2>&1
 rm -rf '../docker/docker-airflow'
-docker compose -f ../docker/docker-polaris/docker-compose.yaml down -v
+docker compose -f ../docker/docker-polaris/docker-compose.yaml down -v > /dev/null 2>&1
 rm -rf '../docker/docker-polaris'
 #docker compose -f ../docker/compose_polaris_edited.yaml down -v
 #docker compose -f ../docker/compose_dbt.yaml down -v
 echo '✅ Environment clean up complete'
-
-
-# Airflow
-echo 'Start Airflow...'
-mkdir '../docker/docker-airflow'
-cp ../docker/original_compose_files/airflow-compose-original.yaml ../docker/docker-airflow/docker-compose.yaml
-echo -e "AIRFLOW_UID=$(id -u)" > ../docker/docker-airflow/.env
-docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init
-cp dag_* ../docker/docker-airflow/dags/
-docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d
-echo '✅ Airflow ready'
 
 
 # Polaris
@@ -32,8 +21,9 @@ mkdir '../docker/docker-polaris'
 cp ../docker/original_compose_files/polaris-compose-original.yaml ../docker/docker-polaris/docker-compose.yaml
 sed -i '' 's|apache/polaris:latest|apache/polaris:1.5.0|g' ../docker/docker-polaris/docker-compose.yaml
 sed -i '' 's|bucket123|lakehouse-bucket|g' ../docker/docker-polaris/docker-compose.yaml
+sed -i '' 's|"endpoint": "http://localhost:9000"|"endpoint": "http://host.docker.internal:9000"|g' ../docker/docker-polaris/docker-compose.yaml
 
-cat > ../docker/docker-polaris/.env.example <<'EOF'
+cat > ../docker/docker-polaris/.env <<'EOF'
 # Polaris bootstrap admin credentials
 ROOT_CLIENT_ID=admin
 ROOT_CLIENT_SECRET=change-me
@@ -47,8 +37,7 @@ RUSTFS_ACCESS_KEY=polaris_root
 RUSTFS_SECRET_KEY=polaris_pass
 EOF
 
-cp ../docker/docker-polaris/.env.example ../docker/docker-polaris/.env
-docker compose -f ../docker/docker-polaris/docker-compose.yaml up -d
+docker compose -f ../docker/docker-polaris/docker-compose.yaml up -d > /dev/null 2>&1
 echo '✅ Polaris ready'
 
 
@@ -126,5 +115,28 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" \
   -H "Authorization: Bearer $POLARIS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"type":"catalog","privilege":"CATALOG_MANAGE_CONTENT"}'
-  
+
+cat >> ../docker/docker-polaris/.env <<EOF
+
+# Generated during setup
+AIRFLOW_CLIENT_ID=${AIRFLOW_CLIENT_ID}
+AIRFLOW_CLIENT_SECRET=${AIRFLOW_CLIENT_SECRET}
+EOF
+
 echo '✅ Polaris provisioning complete'
+
+
+# Airflow
+echo 'Start Airflow...'
+mkdir '../docker/docker-airflow'
+cp ../docker/original_compose_files/airflow-compose-original.yaml ../docker/docker-airflow/docker-compose.yaml
+cp ../docker/docker_files/airflow-dockerfile ../docker/docker-airflow/Dockerfile
+sed -i '' 's|  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}|  #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}|' ../docker/docker-airflow/docker-compose.yaml && \
+sed -i '' 's|  # build: .|  build: .|' ../docker/docker-airflow/docker-compose.yaml
+echo -e "AIRFLOW_UID=$(id -u)" > ../docker/docker-airflow/.env
+grep '^AIRFLOW_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
+grep '^RUSTFS_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
+docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init  > /dev/null 2>&1
+cp dag_* ../docker/docker-airflow/dags/
+docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d  > /dev/null 2>&1
+echo '✅ Airflow ready'
