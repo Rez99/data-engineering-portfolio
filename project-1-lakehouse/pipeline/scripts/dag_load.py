@@ -3,6 +3,7 @@ import os
 import duckdb
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
+from airflow.sdk import Asset
 
 
 POLARIS_URI = "http://host.docker.internal:8181/api/catalog"
@@ -11,6 +12,9 @@ POLARIS_CLIENT_SECRET = os.environ["AIRFLOW_CLIENT_SECRET"]
 RUSTFS_ENDPOINT = "host.docker.internal:9000"
 TABLE_NAME = "events_sample"
 
+bronze_file = Asset(
+    "s3://lakehouse-bucket/bronze/2019-Oct-sample.csv"
+)
 
 def get_connection():
     con = duckdb.connect()
@@ -69,8 +73,9 @@ def validate_table():
 with DAG(
     dag_id="lakehouse_load",
     start_date=datetime(2026, 1, 1),
-    schedule=None,
+    schedule=[bronze_file],
     catchup=False,
+    is_paused_upon_creation=False,
 ) as dag:
 
     t_ensure_schema = PythonOperator(task_id="1_ensure_schema", python_callable=ensure_schema)

@@ -10,8 +10,7 @@ docker compose -f ../docker/docker-airflow/docker-compose.yaml down -v > /dev/nu
 rm -rf '../docker/docker-airflow'
 docker compose -f ../docker/docker-polaris/docker-compose.yaml down -v > /dev/null 2>&1
 rm -rf '../docker/docker-polaris'
-#docker compose -f ../docker/compose_polaris_edited.yaml down -v
-#docker compose -f ../docker/compose_dbt.yaml down -v
+docker compose -f ../docker/docker-dbt/docker-compose.yaml down -v > /dev/null 2>&1
 echo '✅ Environment clean up complete'
 
 
@@ -139,4 +138,11 @@ grep '^RUSTFS_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init  > /dev/null 2>&1
 cp dag_* ../docker/docker-airflow/dags/
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d  > /dev/null 2>&1
+docker exec docker-airflow-airflow-worker-1 airflow dags trigger lakehouse_extract
 echo '✅ Airflow ready'
+
+
+# dbt
+echo 'Start dbt...'
+docker compose -f ../docker/docker-dbt/docker-compose.yaml up -d  > /dev/null 2>&1
+echo '✅ dbt ready'

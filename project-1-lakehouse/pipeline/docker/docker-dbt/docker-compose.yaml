@@ -1,0 +1,4 @@
+services:
+  dbt:
+    build: .
+    command: tail -f /dev/null

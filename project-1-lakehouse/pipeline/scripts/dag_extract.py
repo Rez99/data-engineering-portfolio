@@ -1,16 +1,21 @@
 from datetime import datetime
-
+import os
 import boto3
 import requests
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
+from airflow.sdk import Asset
 
 
 RUSTFS_ENDPOINT = "http://host.docker.internal:9000"
-RUSTFS_ACCESS_KEY = "polaris_root"
-RUSTFS_SECRET_KEY = "polaris_pass"
+RUSTFS_ACCESS_KEY = os.environ["RUSTFS_ACCESS_KEY"]
+RUSTFS_SECRET_KEY = os.environ["RUSTFS_SECRET_KEY"]
 RUSTFS_BUCKET = "lakehouse-bucket"
 OBJECT_KEY = "bronze/2019-Oct-sample.csv"
+
+bronze_file = Asset(
+    "s3://lakehouse-bucket/bronze/2019-Oct-sample.csv"
+)
 
 def get_s3_client():
     return boto3.client(
@@ -84,6 +89,7 @@ with DAG(
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
+    is_paused_upon_creation=False,
 ) as dag:
 
     download = PythonOperator(
@@ -94,6 +100,7 @@ with DAG(
     validate = PythonOperator(
         task_id="2_validate_upload",
         python_callable=validate_upload,
+        outlets=[bronze_file],
     )
 
     download >> validate
