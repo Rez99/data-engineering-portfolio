@@ -2,3 +2,8 @@ services:
   dbt:
     build: .
     command: tail -f /dev/null
+    volumes:
+      - .:/app
+      - ./profiles.yml:/root/.dbt/profiles.yml
+    env_file:
+      - ../docker-polaris/.env

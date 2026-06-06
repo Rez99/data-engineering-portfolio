@@ -1,0 +1,39 @@
+lakehouse:
+  target: dev
+
+  outputs:
+    dev:
+      type: duckdb
+      path: lakehouse.duckdb
+      schema: 'silver'
+      disable_transactions: true
+
+
+
+      secrets:
+        - type: s3
+          provider: config
+          name: rustfs_secret
+          key_id: polaris_root
+          secret: polaris_pass
+          endpoint: host.docker.internal:9000
+          url_style: path
+          use_ssl: false
+
+        - type: iceberg
+          name: polaris_secret
+          client_id: "{{ env_var('AIRFLOW_CLIENT_ID') }}"
+          client_secret: "{{ env_var('AIRFLOW_CLIENT_SECRET') }}"
+          oauth2_server_uri: http://host.docker.internal:8181/api/catalog/v1/oauth/tokens
+
+      attach:
+        - path: lakehouse
+          alias: polaris
+          options:
+            type: iceberg
+            endpoint: http://host.docker.internal:8181/api/catalog
+            client_id: "{{ env_var('AIRFLOW_CLIENT_ID') }}"
+            client_secret: "{{ env_var('AIRFLOW_CLIENT_SECRET') }}"
+
+
+

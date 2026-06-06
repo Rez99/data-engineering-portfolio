@@ -138,8 +138,33 @@ grep '^RUSTFS_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init  > /dev/null 2>&1
 cp dag_* ../docker/docker-airflow/dags/
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d  > /dev/null 2>&1
-docker exec docker-airflow-airflow-worker-1 airflow dags trigger lakehouse_extract
 echo '✅ Airflow ready'
+
+
+# Airflow start DAGs
+echo 'Start Airflow DAG...'
+DAG_ID="lakehouse_extract"
+
+echo "Waiting for DAG to be discovered..."
+
+while true; do
+  if docker exec docker-airflow-airflow-worker-1 \
+      airflow dags list 2>/dev/null \
+      | grep -q "^${DAG_ID}[[:space:]]"; then
+    break
+  fi
+
+  sleep 2
+done
+
+echo "DAG discovered"
+
+RUN_ID="manual_$(date +%s)"
+
+docker exec docker-airflow-airflow-worker-1 \
+  airflow dags trigger "$DAG_ID" \
+  --run-id "$RUN_ID"
+echo '✅ DAGs started'
 
 
 # dbt
