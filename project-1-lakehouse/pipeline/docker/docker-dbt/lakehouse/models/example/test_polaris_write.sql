@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     database='polaris',
-    schema='gold'
+    schema='goldd'
 ) }}
 
 SELECT 1 AS id, 'test' AS value

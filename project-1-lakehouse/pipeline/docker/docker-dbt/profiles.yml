@@ -5,8 +5,8 @@ lakehouse:
     dev:
       type: duckdb
       path: lakehouse.duckdb
-      schema: 'silver'
-      disable_transactions: true
+      schema: 'gold'
+      disable_transactions: true # otherwise we get an error when dbt tries to modify an Iceberg table's name from "*_tmp" to "*"
 
 
 
@@ -14,8 +14,8 @@ lakehouse:
         - type: s3
           provider: config
           name: rustfs_secret
-          key_id: polaris_root
-          secret: polaris_pass
+          key_id: "{{ env_var('RUSTFS_ACCESS_KEY') }}"
+          secret: "{{ env_var('RUSTFS_SECRET_KEY') }}"
           endpoint: host.docker.internal:9000
           url_style: path
           use_ssl: false

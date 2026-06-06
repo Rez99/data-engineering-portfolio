@@ -48,6 +48,6 @@ cp ~/.dbt/profiles.yml ../docker/docker-dbt/profiles.yml
 docker exec -it docker-dbt-dbt-1 bash
 ```
 ```bash
-cd /app
-dbt run --select test_polaris_write.sql
+cd lakehouse
+dbt run --select fact_session.sql
 ```
