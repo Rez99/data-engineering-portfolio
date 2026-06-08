@@ -78,7 +78,7 @@ def load_table():
         CREATE TABLE {TABLE_FQN} AS
         SELECT *
         FROM read_csv_auto(
-            's3://lakehouse-bucket/bronze/raw-2019-Oct.csv'
+            's3://lakehouse-bucket/bronze/raw-2019-Oct.csv.gz'
         )
     """)
 
