@@ -1,0 +1,51 @@
+version: 2
+
+sources:
+  - name: ecommerce_clickstream
+    description: >
+      E-commerce clickstream dataset containing user interactions with a
+      multi-category online store. Source data originates from the Kaggle
+      dataset "eCommerce Behavior Data from Multi Category Store" and is
+      loaded into Iceberg tables by Airflow and DuckDB.
+
+    database: polaris
+    schema: bronze
+
+    tables:
+      - name: iceberg-2019-Oct
+        description: >
+          Event-level user activity including product views, cart actions,
+          and purchases.
+
+        meta:
+          source_url: "https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store"
+
+        columns:
+          - name: event_time
+            description: Timestamp when the event occurred (UTC).
+
+          - name: event_type
+            description: >
+              Event type. Expected values include view, cart,
+              remove_from_cart, and purchase.
+
+          - name: product_id
+            description: Unique identifier of the product.
+
+          - name: category_id
+            description: Unique identifier of the product category.
+
+          - name: category_code
+            description: Human-readable product category name or hierarchy when available.
+
+          - name: brand
+            description: Product brand name in lowercase when available.
+
+          - name: price
+            description: Product price at the time of the event.
+
+          - name: user_id
+            description: Permanent identifier of the user.
+
+          - name: user_session
+            description: Unique identifier of the user session.

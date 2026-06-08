@@ -5,7 +5,7 @@ lakehouse:
     dev:
       type: duckdb
       path: lakehouse.duckdb
-      schema: 'gold'
+      #schema: 'gold'
       disable_transactions: true # otherwise we get an error when dbt tries to modify an Iceberg table's name from "*_tmp" to "*"
 
 

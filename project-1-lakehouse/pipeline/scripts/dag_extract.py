@@ -11,10 +11,10 @@ RUSTFS_ENDPOINT = "http://host.docker.internal:9000"
 RUSTFS_ACCESS_KEY = os.environ["RUSTFS_ACCESS_KEY"]
 RUSTFS_SECRET_KEY = os.environ["RUSTFS_SECRET_KEY"]
 RUSTFS_BUCKET = "lakehouse-bucket"
-OBJECT_KEY = "bronze/2019-Oct-sample.csv"
+OBJECT_KEY = "bronze/raw-2019-Oct.csv"
 
 bronze_file = Asset(
-    "s3://lakehouse-bucket/bronze/2019-Oct-sample.csv"
+    "s3://lakehouse-bucket/bronze/raw-2019-Oct.csv"
 )
 
 def get_s3_client():
@@ -61,7 +61,7 @@ def download_toy_data():
 
     print(
         f"Uploaded {len(lines)} lines "
-        f"to s3://{RUSTFS_BUCKET}/bronze/2019-Oct-sample.csv"
+        f"to s3://{RUSTFS_BUCKET}/bronze/raw-2019-Oct.csv"
     )
 
 
