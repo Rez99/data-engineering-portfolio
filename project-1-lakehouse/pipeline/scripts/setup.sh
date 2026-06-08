@@ -7,10 +7,9 @@ echo '✅ Docker ready'
 # Clean up any existing containers and volumes
 echo 'Clean up environment...'
 docker compose -f ../docker/docker-airflow/docker-compose.yaml down -v > /dev/null 2>&1
-rm -rf '../docker/docker-airflow'
 docker compose -f ../docker/docker-polaris/docker-compose.yaml down -v > /dev/null 2>&1
+rm -rf '../docker/docker-airflow'
 rm -rf '../docker/docker-polaris'
-docker compose -f ../docker/docker-dbt/docker-compose.yaml down -v > /dev/null 2>&1
 echo '✅ Environment clean up complete'
 
 
@@ -36,7 +35,7 @@ RUSTFS_ACCESS_KEY=polaris_root
 RUSTFS_SECRET_KEY=polaris_pass
 EOF
 
-docker compose -f ../docker/docker-polaris/docker-compose.yaml up -d > /dev/null 2>&1
+docker compose -f ../docker/docker-polaris/docker-compose.yaml up -d  --build > /dev/null 2>&1
 echo '✅ Polaris ready'
 
 
@@ -130,23 +129,24 @@ echo 'Start Airflow...'
 mkdir '../docker/docker-airflow'
 cp ../docker/original_compose_files/airflow-compose-original.yaml ../docker/docker-airflow/docker-compose.yaml
 cp ../docker/docker_files/airflow-dockerfile ../docker/docker-airflow/Dockerfile
+cp -r ../docker/docker-dbt ../docker/docker-airflow/
 sed -i '' 's|  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}|  #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}|' ../docker/docker-airflow/docker-compose.yaml && \
 sed -i '' 's|  # build: .|  build: .|' ../docker/docker-airflow/docker-compose.yaml
+sed -i '' '/plugins:\/opt\/airflow\/plugins/a\
+    - ../docker-dbt/lakehouse:/opt/airflow/lakehouse\
+    - ../docker-dbt/profiles.yml:/home/airflow/.dbt/profiles.yml
+' ../docker/docker-airflow/docker-compose.yaml
 echo -e "AIRFLOW_UID=$(id -u)" > ../docker/docker-airflow/.env
 grep '^AIRFLOW_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
 grep '^RUSTFS_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
-docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init  > /dev/null 2>&1
+docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init --build  > /dev/null 2>&1
 cp dag_* ../docker/docker-airflow/dags/
-docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d  > /dev/null 2>&1
+docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d --build > /dev/null 2>&1
 echo '✅ Airflow ready'
 
 
-# Airflow start DAGs
-echo 'Start Airflow DAG...'
-DAG_ID="lakehouse_extract"
-
+# Wait for Airflow DAGs ro be discovered
 echo "Waiting for DAG to be discovered..."
-
 while true; do
   if docker exec docker-airflow-airflow-worker-1 \
       airflow dags list 2>/dev/null \
@@ -156,18 +156,30 @@ while true; do
 
   sleep 2
 done
+echo "✅ DAG discovered"
 
-echo "DAG discovered"
 
+# Airflow start DAGs
+echo 'Start Airflow DAG...'
+
+DAG_ID="lakehouse_0_pipeline"
 RUN_ID="manual_$(date +%s)"
 
 docker exec docker-airflow-airflow-worker-1 \
   airflow dags trigger "$DAG_ID" \
-  --run-id "$RUN_ID"
-echo '✅ DAGs started'
+  --run-id "$RUN_ID" \
+  > /dev/null 2>&1
 
+TOKEN=$(
+curl -s -X POST \
+  http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username":"airflow","password":"airflow"}' \
+  | jq -r '.access_token'
+)
 
-# dbt
-echo 'Start dbt...'
-docker compose -f ../docker/docker-dbt/docker-compose.yaml up -d  > /dev/null 2>&1
-echo '✅ dbt ready'
+curl -N \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "http://localhost:8080/api/v2/dags/${DAG_ID}/dagRuns/${RUN_ID}/wait?interval=3"
+
+echo '✅ DAG runs complete'

@@ -1,21 +1,20 @@
 from datetime import datetime
 import os
+import gzip
+
 import boto3
 import requests
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk import Asset
 
 
 RUSTFS_ENDPOINT = "http://host.docker.internal:9000"
 RUSTFS_ACCESS_KEY = os.environ["RUSTFS_ACCESS_KEY"]
 RUSTFS_SECRET_KEY = os.environ["RUSTFS_SECRET_KEY"]
+
 RUSTFS_BUCKET = "lakehouse-bucket"
 OBJECT_KEY = "bronze/raw-2019-Oct.csv"
 
-bronze_file = Asset(
-    "s3://lakehouse-bucket/bronze/raw-2019-Oct.csv"
-)
 
 def get_s3_client():
     return boto3.client(
@@ -27,8 +26,6 @@ def get_s3_client():
 
 
 def download_toy_data():
-    import gzip
-
     url = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 
     response = requests.get(
@@ -44,7 +41,6 @@ def download_toy_data():
         for i, line in enumerate(gz):
             lines.append(line)
 
-            # header + first 1000 data rows
             if i >= 1000:
                 break
 
@@ -59,11 +55,6 @@ def download_toy_data():
         ContentType="text/csv",
     )
 
-    print(
-        f"Uploaded {len(lines)} lines "
-        f"to s3://{RUSTFS_BUCKET}/bronze/raw-2019-Oct.csv"
-    )
-
 
 def validate_upload():
     s3 = get_s3_client()
@@ -73,19 +64,12 @@ def validate_upload():
         Key=OBJECT_KEY,
     )
 
-    size = response["ContentLength"]
-
-    if size == 0:
+    if response["ContentLength"] == 0:
         raise ValueError("Uploaded object is empty")
-
-    print(
-        f"Validated s3://{RUSTFS_BUCKET}/{OBJECT_KEY} "
-        f"({size} bytes)"
-    )
 
 
 with DAG(
-    dag_id="lakehouse_extract",
+    dag_id="lakehouse_1_extract",
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
@@ -93,14 +77,13 @@ with DAG(
 ) as dag:
 
     download = PythonOperator(
-        task_id="1_download_data",
+        task_id="download_data",
         python_callable=download_toy_data,
     )
 
     validate = PythonOperator(
-        task_id="2_validate_upload",
+        task_id="validate_upload",
         python_callable=validate_upload,
-        outlets=[bronze_file],
     )
 
     download >> validate

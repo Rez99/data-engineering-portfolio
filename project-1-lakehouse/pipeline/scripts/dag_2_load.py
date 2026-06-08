@@ -4,7 +4,6 @@ import os
 import duckdb
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk import Asset
 
 
 POLARIS_URI = "http://host.docker.internal:8181/api/catalog"
@@ -16,10 +15,6 @@ RUSTFS_ENDPOINT = "host.docker.internal:9000"
 SCHEMA_NAME = "bronze"
 TABLE_NAME = "iceberg-2019-Oct"
 TABLE_FQN = f'polaris.{SCHEMA_NAME}."{TABLE_NAME}"'
-
-bronze_file = Asset(
-    "s3://lakehouse-bucket/bronze/raw-2019-Oct.csv"
-)
 
 
 def get_connection():
@@ -106,9 +101,9 @@ def validate_table():
 
 
 with DAG(
-    dag_id="lakehouse_load",
+    dag_id="lakehouse_2_load",
     start_date=datetime(2026, 1, 1),
-    schedule=[bronze_file],
+    schedule=None,
     catchup=False,
     is_paused_upon_creation=False,
 ) as dag:
