@@ -22,8 +22,8 @@ SOURCE_URL = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 # CONFIG
 # ------------------------------------------------------------------
 
-DOWNLOAD_MODE = "full"  # "partial" or "full"
-PARTIAL_MAX_LINES = 1000
+DOWNLOAD_MODE = "partial"  # "partial" or "full"
+PARTIAL_MAX_LINES = 1000000
 
 # ------------------------------------------------------------------
 
