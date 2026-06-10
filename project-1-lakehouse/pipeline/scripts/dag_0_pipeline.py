@@ -29,10 +29,17 @@ with DAG(
     )
 
     transform = TriggerDagRunOperator(
-        task_id="dbt_fact_session",
+        task_id="transform",
         trigger_dag_id="lakehouse_3_transform",
         wait_for_completion=True,
         poke_interval=10,
     )
 
-    extract >> load >> transform
+    ml = TriggerDagRunOperator(
+        task_id="ml",
+        trigger_dag_id="lakehouse_4_ml",
+        wait_for_completion=True,
+        poke_interval=10,
+    )
+
+    extract >> load >> transform >> ml
