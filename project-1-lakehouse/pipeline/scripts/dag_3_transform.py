@@ -12,10 +12,28 @@ with DAG(
     is_paused_upon_creation=False,
 ) as dag:
 
-    run_fact_session = BashOperator(
-        task_id="run_fact_session",
+    stg_2019_oct = BashOperator(
+        task_id="stg_2019_oct",
         bash_command="""
         cd /opt/airflow/lakehouse &&
-        dbt run --select +fact_session
+        dbt run --select stg-2019-Oct
         """,
     )
+
+    int_session = BashOperator(
+        task_id="int_session",
+        bash_command="""
+        cd /opt/airflow/lakehouse &&
+        dbt run --select int_session
+        """,
+    )
+
+    mart_session = BashOperator(
+        task_id="mart_session",
+        bash_command="""
+        cd /opt/airflow/lakehouse &&
+        dbt run --select mart_session
+        """,
+    )
+
+    stg_2019_oct >> int_session >> mart_session

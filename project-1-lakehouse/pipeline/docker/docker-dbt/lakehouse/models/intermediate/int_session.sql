@@ -1,18 +1,40 @@
--- models/marts/fact_session.sql
+-- models/intermediate/int_session.sql
 
 {{ config(
     materialized='table',
     database='polaris',
-    schema='gold'
+    schema='silver'
 ) }}
 
-with sessions as (
+with cleaned as (
+
+    select *
+/*
+        event_time,
+        event_type,
+        product_id,
+        category_id,
+        coalesce(category_code, 'unknown') as category_code,
+        coalesce(brand, 'unknown') as brand,
+        price,
+        user_id,
+        user_session
+*/
+    from {{ ref('stg-2019-Oct') }}
+
+),
+
+sessions as (
 
     select
 
         user_session,
 
         min(user_id) as user_id,
+
+        -- representative values for the session
+        min(brand) as brand,
+        min(category_code) as category_code,
 
         count(*) as total_activity_count,
 
@@ -29,9 +51,10 @@ with sessions as (
         ) as purchase_count,
 
         max(
-            case when event_type = 'purchase'
-                 then 1
-                 else 0
+            case
+                when event_type = 'purchase'
+                then 1
+                else 0
             end
         ) = 1 as converted,
 
@@ -54,18 +77,20 @@ with sessions as (
         ) as hour_of_day,
 
         min(
-            case when event_type = 'view'
-                 then event_time
+            case
+                when event_type = 'view'
+                then event_time
             end
         ) as first_view_time,
 
         min(
-            case when event_type = 'cart'
-                 then event_time
+            case
+                when event_type = 'cart'
+                then event_time
             end
         ) as first_cart_time
 
-    from {{ ref('stg-2019-Oct') }}
+    from cleaned
 
     group by user_session
 
