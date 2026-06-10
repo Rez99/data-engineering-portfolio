@@ -134,13 +134,16 @@ sed -i '' 's|  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}|  #image: ${AI
 sed -i '' 's|  # build: .|  build: .|' ../docker/docker-airflow/docker-compose.yaml
 sed -i '' '/plugins:\/opt\/airflow\/plugins/a\
     - ../docker-dbt/lakehouse:/opt/airflow/lakehouse\
-    - ../docker-dbt/profiles.yml:/home/airflow/.dbt/profiles.yml
+    - ../docker-dbt/profiles.yml:/home/airflow/.dbt/profiles.yml\
+    - ./ml:/opt/airflow/ml
 ' ../docker/docker-airflow/docker-compose.yaml
 echo -e "AIRFLOW_UID=$(id -u)" > ../docker/docker-airflow/.env
 grep '^AIRFLOW_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
 grep '^RUSTFS_' ../docker/docker-polaris/.env >> ../docker/docker-airflow/.env
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up airflow-init --build  > /dev/null 2>&1
 cp dag_* ../docker/docker-airflow/dags/
+mkdir -p ../docker/docker-airflow/ml
+cp train_xgboost_conversion.py ../docker/docker-airflow/ml/
 docker compose -f ../docker/docker-airflow/docker-compose.yaml up -d --build > /dev/null 2>&1
 echo '✅ Airflow ready'
 

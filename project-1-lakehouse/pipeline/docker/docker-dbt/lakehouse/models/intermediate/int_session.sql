@@ -9,7 +9,6 @@
 with cleaned as (
 
     select *
-/*
         event_time,
         event_type,
         product_id,
@@ -19,7 +18,6 @@ with cleaned as (
         price,
         user_id,
         user_session
-*/
     from {{ ref('stg-2019-Oct') }}
 
 ),
