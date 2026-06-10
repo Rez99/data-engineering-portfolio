@@ -13,7 +13,7 @@ with filtered as (
 
     where total_activity_count <= (
         select
-            quantile_cont(total_activity_count, 0.999)
+            quantile_cont(total_activity_count, 0.999) --reduces total_activity_count (1159 to 69) for top 0.1% sessions, which are likely outliers
         from {{ ref('int_session') }}
     )
 

@@ -180,6 +180,6 @@ curl -s -X POST \
 
 curl -N \
   -H "Authorization: Bearer ${TOKEN}" \
-  "http://localhost:8080/api/v2/dags/${DAG_ID}/dagRuns/${RUN_ID}/wait?interval=3"
+  "http://localhost:8080/api/v2/dags/${DAG_ID}/dagRuns/${RUN_ID}/wait?interval=20"
 
 echo '✅ DAG runs complete'
