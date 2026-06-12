@@ -97,6 +97,7 @@ sequenceDiagram
 | Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="30">  | Iceberg REST catalog                        |
 | Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30">  | Open analytical table format                |
 | Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="30">             | Declarative data modeling                   |
+| Machine Learning  | <img src="assets/logos/xgboost.png" alt="XGBoost" height="30"> | Memory-efficient model training for large datasets          |
 | Visualization  | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration           |
 
 
