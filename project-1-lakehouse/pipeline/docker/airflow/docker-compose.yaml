@@ -81,8 +81,8 @@ x-airflow-common:
     - ./logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
-    - ../docker-dbt/lakehouse:/opt/airflow/lakehouse
-    - ../docker-dbt/profiles.yml:/home/airflow/.dbt/profiles.yml
+    - ../dbt/lakehouse:/opt/airflow/lakehouse
+    - ../dbt/profiles.yml:/home/airflow/.dbt/profiles.yml
 
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:

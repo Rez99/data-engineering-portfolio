@@ -1,6 +1,6 @@
 # Initial set-up
 ```bash
-docker exec -it docker-dbt-dbt-1 bash
+docker compose exec dbt bash
 ```
 
 ```bash
@@ -41,11 +41,11 @@ lakehouse:
 ```
 
 ```bash
-cp ~/.dbt/profiles.yml ../docker/docker-dbt/profiles.yml
+cp ~/.dbt/profiles.yml ../docker/dbt/profiles.yml
 ```
 
 ```bash
-docker exec -it docker-dbt-dbt-1 bash
+docker compose exec dbt bash
 ```
 ```bash
 cd lakehouse

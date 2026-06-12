@@ -7,14 +7,6 @@ PIPELINE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 echo "Stopping services and deleting local volumes..."
 
-# Remove stacks created by the previous generated-file setup layout.
-for legacy_stack in docker-airflow docker-superset docker-polaris; do
-  legacy_compose="${PIPELINE_DIR}/docker/${legacy_stack}/docker-compose.yaml"
-  if [[ -f "${legacy_compose}" ]]; then
-    docker compose -f "${legacy_compose}" down --volumes --remove-orphans
-  fi
-done
-
 if [[ -f "${PIPELINE_DIR}/docker/airflow/.env" ]]; then
   docker compose \
     -p lakehouse-airflow \

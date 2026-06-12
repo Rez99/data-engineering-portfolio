@@ -24,12 +24,16 @@ pipeline/
 ├── dags/                   # Airflow DAG definitions
 ├── docker/
 │   ├── airflow/            # Airflow, Postgres, and Redis
-│   ├── docker-dbt/         # dbt project and DuckDB profile
+│   ├── dbt/                # dbt project and DuckDB profile
 │   ├── polaris/            # RustFS and Polaris
 │   └── superset/           # Superset and its metadata database
+├── logs/
+│   └── setup.log           # Detailed installer output
 └── scripts/
     ├── setup.sh            # Start infrastructure and run the pipeline
     ├── reset.sh            # Delete containers, volumes, and generated env files
+    ├── superset_config.py   # Superset application configuration
+    ├── superset_init_duckdb.py
     └── superset_assets/    # Version-controlled dashboard definitions
 ```
 
@@ -45,10 +49,11 @@ Setup preserves existing volumes. It performs these steps:
 
 1. Starts RustFS and Polaris.
 2. Provisions the Polaris catalog and Airflow credentials.
-3. Initializes and starts Airflow and Superset.
-4. Waits for service health checks and DAG discovery.
-5. Triggers the Airflow pipeline and waits for success.
-6. Registers the generated ML metrics and imports the Superset dashboard.
+3. Initializes Airflow.
+4. Starts Airflow and waits for health checks and DAG discovery.
+5. Starts Superset and waits for its health check.
+6. Triggers the Airflow pipeline and waits for success.
+7. Registers the generated ML metrics and imports the Superset dashboard.
 
 The terminal shows only high-level installer progress. Detailed Docker,
 Airflow, and Superset output is written to `pipeline/logs/setup.log` and shown
@@ -58,6 +63,10 @@ Local credentials:
 
 - Airflow: `airflow` / `airflow`
 - Superset: `admin` / `admin`
+
+Model dashboard:
+
+http://localhost:8088/superset/dashboard/xgboost-model-evaluation/
 
 ## Reset
 
@@ -69,6 +78,3 @@ Use the reset command when a completely clean environment is required:
 
 This is intentionally separate from normal setup because it deletes local
 containers, volumes, generated credentials, and Airflow runtime files.
-
-Repositories initialized with the earlier generated-Compose layout should run
-`reset.sh` once before the first run of the new setup.
