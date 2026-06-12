@@ -1,41 +1,45 @@
-# Why Lakehouses?
+# Project 1: Local Lakehouse
 
-Before building a lakehouse, I wanted to answer two questions:
+## End-to-End Data Engineering on Commodity Hardware
 
-1. How much faster are modern OLAP databases than traditional OLTP databases for analytics?
-2. If OLAP databases already provide excellent analytical performance, what problem does a lakehouse solve?
+*A fully containerized local lakehouse platform built with open-source technologies, demonstrating resource-aware architecture, modern data engineering workflows, and scalable analytical processing on commodity hardware.*
 
-To answer those questions, I benchmarked the same 42 million row ecommerce clickstream dataset across four architectures: file analytics with Pandas, PostgreSQL, DuckDB, and a local lakehouse built with DuckDB, Iceberg, and Polaris.
+---
 
-## How much faster is OLAP vs OLTP?
+## Table of Contents
 
-```mermaid
-xychart-beta
-    title "Query Runtime (seconds)"
-    x-axis ["File Analytics", "OLTP Database", "OLAP Database", "Lakehouse Architecture"]
-    y-axis "Seconds" 0 --> 60
-    bar [70, 59, 0.1, 0.1]
-```
+1. Executive Summary
+2. Architecture
+3. Design Decisions
+4. Deployment
+5. Reflections and Next Steps
 
-|Stage|Architecture|Stack|Storage Cost|Memory Cost|Compute Cost|Notes|
-|---|---|---|---|---|---|---|
-|1|File Analytics|Pandas + csv.gz|🟠 Medium|🔴 High|🔴 High|Simple and flexible for exploratory analysis, but limited by available memory.|
-|2|OLTP Database|Postgres|🔴 High|🟢 Low|🔴 High|Optimized for transactions and updates, not large analytical scans.|
-|3|OLAP Database|DuckDB|🟢 Low|🟢 Low|🟢 Low|Columnar OLAP systems dramatically reduce storage and query costs for analytics.|
-|4|Lakehoue Architecture|DuckDB + Iceberg + Polaris|🟢 Low|🟢 Low|🟢 Low|Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities.|
+---
 
-**File Analytics (Pandas + compressed CSV):** Pandas provided a simple and flexible starting point. The compressed CSV occupied 1.62 GB on disk and required a 69 second load before analysis could begin. Queries were fast once the data was loaded, but the entire dataset had to fit in memory, creating a fundamental scalability constraint as data volumes grow.
+### 1. Executive Summary
 
-**OLTP Database (PostgreSQL):** Loading the same dataset into PostgreSQL increased storage requirements to 6.85 GB and the benchmark query took 59 seconds to complete. While PostgreSQL excels at transactions and operational workloads, the benchmark demonstrated that row-oriented databases are not optimized for large analytical scans.
+#### What was built?
 
-**OLAP Database (DuckDB):** Moving to DuckDB's columnar storage reduced storage requirements to roughly 1.5 GB while executing the same query in just 0.13 seconds. This was the most significant result of the project, clearly demonstrating why analytical workloads migrated from OLTP systems to columnar OLAP engines.
+This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a large public clickstream dataset, processes it through an end-to-end analytical pipeline, and delivers curated analytics and model metadata through Apache Superset.
 
-## What problem does a lakehouse solve?
+#### What does this project demonstrate?
 
-**Lakehouse (DuckDB + Iceberg + Polaris):** Query performance remained essentially unchanged at 0.13 seconds. This was expected because the benchmark dataset consisted of a single Parquet file, leaving little opportunity for Iceberg's metadata layer to improve query planning. In larger deployments containing thousands of files, Iceberg can accelerate analytics by allowing query engines to identify relevant files through metadata rather than discovering and inspecting every file individually. It also introduces capabilities such as schema evolution, time travel, governance, and ACID transactions.
+The platform brings together the core components of a modern analytical data stack into a reproducible local environment. It demonstrates practical experience with workflow orchestration, object storage, open table formats, data transformation, and business intelligence tooling.
 
-## Summary
-The benchmark validated two important ideas. First, OLAP databases can dramatically reduce both storage and compute costs compared with traditional OLTP systems for analytical workloads. Second, lakehouses solve a different problem: managing analytical data at scale through metadata, governance, and intelligent file organization.
+#### Central Design Philosophy
+
+The pipeline was deliberately designed to make large-scale analytical processing practical on commodity hardware. By favoring columnar storage, staged processing, and out-of-core execution over large in-memory workflows, the same architecture that enables local development also reflects scalable and cost-conscious production engineering.
+
+
+### 2. Architecture
+
+#### How the Components Fit Together
+
+The platform follows a layered lakehouse architecture, separating orchestration, storage, transformation, and visualization into independent services. Apache Airflow orchestrates the ingestion pipeline, loading raw data into Apache Iceberg tables backed by S3-compatible object storage. DuckDB and dbt perform analytical transformations directly against the lakehouse, while Apache Superset exposes curated analytics and model metadata for exploration and visualization.
+
+#### High-Level Architecture
+
+*The diagram below illustrates the flow of data through the platform and the interaction between the major components.*
 
 ```mermaid
 sequenceDiagram
@@ -79,3 +83,153 @@ sequenceDiagram
 
     Note over ObjectStorage,Visualization: Read model metrics
 ```
+
+#### Technology Stack
+
+| Layer          | Technology      | Purpose                                     |
+| -------------- | --------------- | ------------------------------------------- |
+| Infrastructure | <img src="assets/logos/docker.svg" alt="Docker" height="30">   | Reproducible local deployment               |
+| Orchestration  | <img src="assets/logos/airflow.png" alt="Airflow" height="30">  | Pipeline scheduling and workflow management |
+| Object Storage | <img src="assets/logos/rustfs.svg" alt="RustFS" height="30">          | S3-compatible object storage                |
+| Query Engine   | <img src="assets/logos/duckdb.svg" alt="DuckDB" height="30">          | High-performance analytical processing      |
+| Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="30">  | Iceberg REST catalog                        |
+| Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30">  | Open analytical table format                |
+| Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="30">             | Declarative data modeling                   |
+| Machine Learning  | <img src="assets/logos/xgboost.png" alt="XGBoost" height="30"> | Memory-efficient model training for large datasets          |
+| Visualization  | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration           |
+
+
+
+### 3. Design Decisions
+
+#### Benchmarking the Alternatives
+
+Before building the lakehouse, I wanted to answer two questions:
+
+1. How much faster are modern OLAP databases than traditional OLTP databases for analytical workloads?
+2. If OLAP databases already provide excellent performance, what additional problem does a lakehouse solve?
+
+To answer these questions, I benchmarked the same 42 million row ecommerce clickstream dataset across four architectures: file analytics with Pandas, PostgreSQL, DuckDB, and a local lakehouse built with DuckDB, Iceberg, and Polaris.
+
+```mermaid
+xychart-beta
+    title "Query Runtime (seconds)"
+    x-axis ["File Analytics", "OLTP Database", "OLAP Database", "Lakehouse Architecture"]
+    y-axis "Seconds" 0 --> 60
+    bar [70, 59, 0.1, 0.1]
+```
+|Stage|Architecture|Stack|Storage Cost|Memory Cost|Compute Cost|Notes|
+|---|---|---|---|---|---|---|
+|1|File Analytics|Pandas + csv.gz|🟠 Medium|🔴 High|🔴 High|Simple and flexible for exploratory analysis, but limited by available memory.|
+|2|OLTP Database|Postgres|🔴 High|🟢 Low|🔴 High|Optimized for transactions and updates, not large analytical scans.|
+|3|OLAP Database|DuckDB|🟢 Low|🟢 Low|🟢 Low|Columnar OLAP systems dramatically reduce storage and query costs for analytics.|
+|4|Lakehoue Architecture|DuckDB + Iceberg + Polaris|🟢 Low|🟢 Low|🟢 Low|Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities.|
+
+*Representative benchmark query over a 42 million row clickstream dataset.
+
+The benchmarks validated two important ideas. First, columnar OLAP systems dramatically reduce both storage and compute costs compared with traditional row-oriented databases. Second, lakehouses solve a different problem: they decouple storage, metadata, and compute while introducing capabilities such as schema evolution, governance, and ACID transactions. These observations directly informed the architecture of the final platform.
+
+#### Resource-Aware Engineering
+
+A central design goal throughout the project was to make large-scale analytical processing practical on commodity hardware. Rather than relying on large in-memory workflows, the pipeline was deliberately designed around columnar storage, staged processing, and out-of-core execution. The same architectural patterns that enable local development also align with scalable and cost-conscious production engineering.
+
+Several implementation decisions followed naturally from this philosophy:
+
+- **Columnar, out-of-core processing**. The core pipeline uses DuckDB and Parquet rather than materializing the full dataset as an in-memory Pandas DataFrame.
+- **Intermediate persistence**. The ingestion pipeline was redesigned from CSV → Iceberg to CSV → Parquet → Iceberg, separating expensive CSV parsing from Iceberg table creation and reducing peak memory utilization.
+- **Independent model execution**. Large dbt models are orchestrated as separate Airflow tasks, allowing memory to be reclaimed between stages while improving observability and retry granularity.
+- **External-memory machine learning**. The standard Iceberg → Pandas → XGBoost workflow was replaced with a disk-backed pipeline using Parquet and XGBoost's external-memory mode, reducing peak memory usage while preserving model performance.
+
+A common pattern emerged across all layers of the platform: instead of solving scalability challenges by allocating more hardware, large operations were decomposed into smaller stages separated by persisted intermediate artifacts. The total amount of computation remains essentially unchanged, but peak memory consumption is substantially reduced.
+
+### 4. Deployment
+
+#### Setup
+
+Clone the repository and run the setup script:
+
+```bash
+git clone https://github.com/Rez99/data-engineering-portfolio.git
+cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
+bash setup.sh
+```
+
+The setup script provisions the lakehouse infrastructure, configures the required services, and orchestrates the end-to-end workflow through a single command.
+
+<img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
+
+#### Resetting the Environment
+
+To stop the platform and return to a clean local environment, run:
+
+```bash
+cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
+bash reset.sh
+```
+
+#### Platform Services
+
+| Service         | Purpose                      | URL                   | Credentials                   |
+| --------------- | ---------------------------- | --------------------- | ----------------------------- |
+| Apache Airflow  | Pipeline orchestration       | http://localhost:8080 | `airflow` / `airflow`         |
+| RustFS          | S3-compatible object storage | http://localhost:9001 | `polaris_root` / `polaris_pass` |
+| Apache Polaris  | Iceberg catalog              | http://localhost:8181 | API only                      |
+| Apache Superset | Model evaluation dashboard   | http://localhost:8088 | `admin` / `admin`             |
+
+#### Repository Structure
+
+```text
+pipeline/
+├── dags/                   # Airflow DAG definitions
+├── docker/
+│   ├── airflow/            # Airflow, Postgres, and Redis
+│   ├── dbt/                # dbt project and DuckDB profile
+│   ├── polaris/            # RustFS and Polaris
+│   └── superset/           # Superset and its metadata database
+├── logs/
+│   └── setup.log           # Detailed installer output
+└── scripts/
+    ├── setup.sh            # Start infrastructure and run the pipeline
+    ├── reset.sh            # Delete containers, volumes, and generated artifacts
+    ├── superset_config.py
+    ├── superset_init_duckdb.py
+    └── superset_assets/    # Version-controlled dashboard definitions
+```
+
+
+#### Data pipeline
+
+Apache Airflow orchestrates a complete end-to-end lakehouse workflow:
+
+1. Extract raw ecommerce events into RustFS.
+1. Create and query Apache Iceberg tables using DuckDB and Polaris.
+1. Build the analytical session model with dbt.
+1. Train an XGBoost model and publish evaluation metrics.
+
+The generated metrics are then available for interactive exploration through the pre-configured Apache Superset dashboard.
+
+The figures below show the platform after a successful pipeline execution.
+
+**Apache Airflow**
+
+<img src="assets/logos/airflow_ui.png" alt="Apache Airflow UI" width="1000">
+
+**Apache Superset**
+
+
+<img src="assets/logos/superset_ui.png" alt="Apache Superset dashboard" width="1000">
+
+
+### 5. Reflections and Next Steps
+
+#### Key Lessons
+
+Building this project reinforced that modern data engineering is less about individual tools and more about how independent components work together. Benchmarking the alternatives and measuring resource usage directly led to better architectural decisions than relying on assumptions.
+
+#### Trade-offs and Limitations
+
+The platform is intentionally optimized for reproducibility and efficient local execution. Several implementation choices—such as staged processing and intermediate persistence—favor lower memory consumption over the simplest possible implementation.
+
+#### Future Directions
+
+The next natural step is to extend the same architecture into a cloud-native environment using managed infrastructure and Infrastructure as Code, before evolving toward streaming data pipelines and real-time analytics.
