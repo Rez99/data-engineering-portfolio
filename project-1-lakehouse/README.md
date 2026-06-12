@@ -16,13 +16,13 @@
 
 ## 1. Executive Summary
 
-This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. A single setup script provisions and configures the containerized services before Apache Airflow runs the end-to-end data pipeline:
+This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. A single setup script provisions and configures the services. Apache Airflow then orchestrates the data and machine learning pipeline:
 
 1. Downloads a publicly available e-commerce clickstream dataset in CSV format.
 2. Converts the CSV data to Parquet and loads it into cataloged Apache Iceberg tables.
 3. Transforms the event data into a session-level feature store for machine learning.
 4. Trains an XGBoost classifier to predict whether a user session contains a purchase.
-5. Displays model performance metrics and feature importance in Apache Superset.
+5. Publishes the model outputs for Apache Superset to read and visualize as performance metrics and feature importance.
 
 ## 2. Architecture
 
