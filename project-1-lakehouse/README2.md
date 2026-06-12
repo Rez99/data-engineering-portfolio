@@ -43,20 +43,62 @@ The platform follows a layered lakehouse architecture, separating orchestration,
 
 *The diagram below illustrates the flow of data through the platform and the interaction between the major components.*
 
-*[Architecture Diagram]*
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Orchestration
+    participant ObjectStorage as Object Storage
+    participant QueryEngine as Query Engine<br/>+ Catalog
+    participant Transformation
+    participant ML as Machine Learning
+    participant Visualization
+
+    rect rgb(255, 230, 230)
+        Orchestration->>ObjectStorage: DAG 1️⃣ > Extract
+    end
+
+    rect rgb(242, 255, 230)
+        Orchestration->>QueryEngine: DAG 2️⃣ > Load
+        QueryEngine->>ObjectStorage: Write Parquet
+        QueryEngine->>ObjectStorage: Write Iceberg
+    end
+
+    rect rgb(230, 255, 255)
+        Orchestration->>Transformation: DAG 3️⃣ > Transform
+        Transformation->>QueryEngine: Run stg model
+        QueryEngine->>ObjectStorage: Write stg model
+
+        Transformation->>QueryEngine: Run int model
+        QueryEngine->>ObjectStorage: Write int model
+
+        Transformation->>QueryEngine: Run mart model
+        QueryEngine->>ObjectStorage: Write mart model<br/>(feature store)
+    end
+
+    rect rgb(242, 230, 255)
+        Orchestration->>ML: DAG 4️⃣ > Build ML model
+        Note over ObjectStorage,ML: Read training data
+        ML->>ML: Build model
+        ML->>ObjectStorage: Publish model and metrics
+    end
+
+    Note over ObjectStorage,Visualization: Read model metrics
+```
 
 #### Technology Stack
 
 | Layer          | Technology      | Purpose                                     |
 | -------------- | --------------- | ------------------------------------------- |
+| Infrastructure | <img src="assets/logos/docker.svg" alt="Docker" height="30">   | Reproducible local deployment               |
 | Orchestration  | <img src="assets/logos/airflow.png" alt="Airflow" height="30">  | Pipeline scheduling and workflow management |
 | Object Storage | <img src="assets/logos/rustfs.svg" alt="RustFS" height="30">          | S3-compatible object storage                |
-| Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30">  | Open analytical table format                |
-| Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="30">  | Iceberg REST catalog                        |
 | Query Engine   | <img src="assets/logos/duckdb.svg" alt="DuckDB" height="30">          | High-performance analytical processing      |
+| Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="30">  | Iceberg REST catalog                        |
+| Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30">  | Open analytical table format                |
 | Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="30">             | Declarative data modeling                   |
 | Visualization  | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration           |
-| Infrastructure | <img src="assets/logos/docker.svg" alt="Docker" height="30">   | Reproducible local deployment               |
+
 
 
 ### 3. Design Decisions
