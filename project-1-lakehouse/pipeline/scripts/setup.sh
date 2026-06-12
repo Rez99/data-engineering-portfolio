@@ -284,16 +284,22 @@ EOF
 
 if ! docker compose \
   -f ../docker/docker-superset/docker-compose.yaml \
-  up superset-init --build
+  up superset-init --build > /dev/null 2>&1
 then
+  docker compose \
+    -f ../docker/docker-superset/docker-compose.yaml \
+    logs --tail=100 superset-init superset-db
   echo 'Superset initialization failed'
   exit 1
 fi
 
 if ! docker compose \
   -f ../docker/docker-superset/docker-compose.yaml \
-  up -d superset
+  up -d superset > /dev/null 2>&1
 then
+  docker compose \
+    -f ../docker/docker-superset/docker-compose.yaml \
+    logs --tail=100 superset superset-init superset-db
   echo 'Superset startup failed'
   exit 1
 fi
