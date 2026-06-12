@@ -6,7 +6,7 @@
 
 ## Table of Contents
 
-1. Executive Summary
+1. Project Overview
 2. Architecture
 3. Design Decisions
 4. Deployment
@@ -14,7 +14,7 @@
 
 ---
 
-## 1. Executive Summary
+## 1. Project Overview
 
 This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. A single setup script provisions and configures the services. Apache Airflow then orchestrates the data and machine learning pipeline:
 
