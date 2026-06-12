@@ -119,7 +119,7 @@ The benchmarks validated two important ideas. First, columnar OLAP systems drama
 Four implementation decisions keep peak memory use manageable on commodity hardware:
 
 - **Columnar, out-of-core processing**. The core pipeline uses DuckDB and Parquet rather than materializing the full dataset as an in-memory Pandas DataFrame.
-- **Intermediate persistence**. The ingestion pipeline was redesigned from CSV → Iceberg to CSV → Parquet → Iceberg, separating expensive CSV parsing from Iceberg table creation and reducing peak memory utilization.
+- **Staged ingestion**. The ingestion pipeline was redesigned from `CSV → Iceberg` to `CSV → Parquet → Iceberg`. By materializing an intermediate Parquet artifact, expensive CSV parsing is separated from Iceberg table creation, reducing peak memory utilization and improving scalability.
 - **Independent dbt model execution**. Large dbt models are orchestrated as separate Airflow tasks, allowing memory to be reclaimed between stages while improving observability and retry granularity.
 - **External-memory machine learning**. The original Iceberg → Pandas → XGBoost workflow was replaced with a disk-backed pipeline using Parquet and XGBoost's external-memory mode, reducing peak memory usage without requiring the full training dataset in RAM.
 
