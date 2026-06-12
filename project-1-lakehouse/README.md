@@ -41,41 +41,41 @@ The benchmark validated two important ideas. First, OLAP databases can dramatica
 sequenceDiagram
     autonumber
 
-    participant Orchestrator
+    participant Orchestration
     participant ObjectStorage as Object Storage
-    participant ComputeEngine as Compute Engine
-    participant Catalog as Metadata Catalog
-    participant Transform as Transformation Framework
-    participant Consumption
+    participant QueryEngine as Query Engine<br/>+ Catalog
+    participant Transformation
+    participant ML as Machine Learning
+    participant Visualization
 
-    rect rgb(255, 240, 240)
-        Orchestrator->>ObjectStorage: DAG (Extract data)
-        Note over ObjectStorage: Bronze
+    rect rgb(255, 230, 230)
+        Orchestration->>ObjectStorage: DAG 1️⃣ > Extract
     end
 
-    rect rgb(240, 255, 240)
-        Orchestrator->>ComputeEngine: DAG (Load data)
-        ComputeEngine->>ObjectStorage: Read Bronze files
-        ComputeEngine->>ObjectStorage: Write open table files
-        Note over ObjectStorage: Silver
-        ComputeEngine->>Catalog: Register/update table
-        Catalog-->>ComputeEngine: Table committed
+    rect rgb(242, 255, 230)
+        Orchestration->>QueryEngine: DAG 2️⃣ > Load
+        QueryEngine->>ObjectStorage: Write Parquet
+        QueryEngine->>ObjectStorage: Write Iceberg
     end
 
-    rect rgb(240, 240, 255)
-        Orchestrator->>Transform: DAG (Transform data)
-        Transform->>ComputeEngine: Execute SQL
-        ComputeEngine->>ObjectStorage: Write transformed table
-        Note over ObjectStorage: Gold
+    rect rgb(230, 255, 255)
+        Orchestration->>Transformation: DAG 3️⃣ > Transform
+        Transformation->>QueryEngine: Run stg model
+        QueryEngine->>ObjectStorage: Write stg model
+
+        Transformation->>QueryEngine: Run int model
+        QueryEngine->>ObjectStorage: Write int model
+
+        Transformation->>QueryEngine: Run mart model
+        QueryEngine->>ObjectStorage: Write mart model<br/>(feature store)
     end
 
-    rect rgb(255, 255, 240)
-       Consumption->>ComputeEngine: Query Gold data
-       ComputeEngine-->>Consumption: Results
+    rect rgb(242, 230, 255)
+        Orchestration->>ML: DAG 4️⃣ > Build ML model
+        Note over ObjectStorage,ML: Read training data
+        ML->>ML: Build model
+        ML->>ObjectStorage: Publish model and metrics
     end
 
-    
-
-    
+    Note over ObjectStorage,Visualization: Read model metrics
 ```
-    
