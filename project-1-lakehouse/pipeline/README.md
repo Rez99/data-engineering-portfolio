@@ -50,6 +50,10 @@ Setup preserves existing volumes. It performs these steps:
 5. Triggers the Airflow pipeline and waits for success.
 6. Registers the generated ML metrics and imports the Superset dashboard.
 
+The terminal shows only high-level installer progress. Detailed Docker,
+Airflow, and Superset output is written to `pipeline/logs/setup.log` and shown
+automatically if a setup step fails.
+
 Local credentials:
 
 - Airflow: `airflow` / `airflow`

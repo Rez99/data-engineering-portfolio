@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
-trap 'echo "Setup failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIPELINE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOG_DIR="${PIPELINE_DIR}/logs"
+LOG_FILE="${LOG_DIR}/setup.log"
 
 POLARIS_DIR="${PIPELINE_DIR}/docker/polaris"
 AIRFLOW_DIR="${PIPELINE_DIR}/docker/airflow"
@@ -16,11 +17,83 @@ SUPERSET_COMPOSE=(docker compose -p lakehouse-superset -f "${SUPERSET_DIR}/docke
 
 DAG_ID="lakehouse_0_pipeline"
 RUN_ID="manual_$(date +%s)"
+TOTAL_STEPS=6
+USE_IN_PLACE_STATUS=false
+
+if [[ -t 1 && "${TERM:-dumb}" != "dumb" ]]; then
+  USE_IN_PLACE_STATUS=true
+fi
+
+log_info() {
+  printf '[%s] INFO  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${LOG_FILE}"
+}
+
+log_success() {
+  printf '[%s] OK    %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${LOG_FILE}"
+}
+
+log_error() {
+  printf '[%s] ERROR %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${LOG_FILE}"
+}
+
+print_step_start() {
+  local step_number="$1"
+  local message="$2"
+  local line
+  line="[$step_number/$TOTAL_STEPS] $message"
+
+  printf '%-62s' "${line}"
+}
+
+print_step_result() {
+  local step_number="$1"
+  local message="$2"
+  local result="$3"
+  local line
+  line="[$step_number/$TOTAL_STEPS] $message"
+
+  if [[ "${USE_IN_PLACE_STATUS}" == "true" ]]; then
+    printf '\r\033[2K%-62s %s\n' "${line}" "${result}"
+  else
+    printf ' %s\n' "${result}"
+  fi
+}
+
+show_failure() {
+  local step_number="$1"
+  local message="$2"
+
+  print_step_result "${step_number}" "${message}" "❌ Failed"
+  printf '\nDetailed logs: %s\n\n' "${LOG_FILE}" >&2
+  printf '%s\n' 'Last 50 log lines:' >&2
+  printf '%s\n' '────────────────────────────────────────' >&2
+  tail -n 50 "${LOG_FILE}" >&2
+}
+
+run_step() {
+  local step_number="$1"
+  local message="$2"
+  local success_status="$3"
+  shift 3
+
+  print_step_start "${step_number}" "${message}"
+  log_info "Step ${step_number}/${TOTAL_STEPS}: ${message}"
+
+  if (set -Eeuo pipefail; "$@") >>"${LOG_FILE}" 2>&1; then
+    log_success "${message}"
+    print_step_result "${step_number}" "${message}" "✅ ${success_status}"
+    return
+  fi
+
+  log_error "${message}"
+  show_failure "${step_number}" "${message}"
+  exit 1
+}
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Required command not found: $1" >&2
-    exit 1
+    return 1
   fi
 }
 
@@ -30,7 +103,7 @@ wait_for_docker() {
   fi
 
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "Starting Docker Desktop..."
+    log_info "Starting Docker Desktop"
     open -a Docker
   fi
 
@@ -42,7 +115,7 @@ wait_for_docker() {
   done
 
   echo "Docker did not become ready." >&2
-  exit 1
+  return 1
 }
 
 create_environment_files() {
@@ -87,7 +160,7 @@ EOF
 }
 
 wait_for_dag() {
-  echo "Waiting for Airflow to discover ${DAG_ID}..."
+  log_info "Waiting for Airflow to discover ${DAG_ID}"
 
   for attempt in {1..60}; do
     if "${AIRFLOW_COMPOSE[@]}" exec -T airflow-worker \
@@ -99,13 +172,13 @@ wait_for_dag() {
   done
 
   echo "Airflow did not discover ${DAG_ID}." >&2
-  exit 1
+  return 1
 }
 
 run_pipeline() {
-  echo "Triggering ${DAG_ID}..."
+  log_info "Triggering ${DAG_ID} with run ID ${RUN_ID}"
   "${AIRFLOW_COMPOSE[@]}" exec -T airflow-worker \
-    airflow dags trigger "${DAG_ID}" --run-id "${RUN_ID}" >/dev/null
+    airflow dags trigger "${DAG_ID}" --run-id "${RUN_ID}"
 
   local token
   token="$(
@@ -127,56 +200,85 @@ run_pipeline() {
 
     case "${state}" in
       success)
-        echo "Airflow pipeline complete."
+        log_success "Airflow pipeline ${RUN_ID} completed"
         return
         ;;
       failed)
         echo "Airflow pipeline failed. See http://localhost:8080." >&2
-        exit 1
+        return 1
         ;;
       *)
-        echo "Pipeline state: ${state}"
+        log_info "Pipeline state: ${state}"
         sleep 15
         ;;
     esac
   done
 
   echo "Pipeline wait timed out after one hour." >&2
-  exit 1
+  return 1
 }
 
-for command in docker curl jq openssl; do
-  require_command "${command}"
-done
+start_rustfs_and_polaris() {
+  for command in docker curl jq openssl; do
+    require_command "${command}" || return 1
+  done
 
-wait_for_docker
-create_environment_files
-mkdir -p "${AIRFLOW_DIR}/logs" "${AIRFLOW_DIR}/plugins" "${AIRFLOW_DIR}/config"
+  wait_for_docker || return 1
+  create_environment_files || return 1
+  mkdir -p \
+    "${AIRFLOW_DIR}/logs" \
+    "${AIRFLOW_DIR}/plugins" \
+    "${AIRFLOW_DIR}/config" || return 1
+  "${POLARIS_COMPOSE[@]}" up -d --wait
+}
 
-echo "Starting RustFS and Polaris..."
-"${POLARIS_COMPOSE[@]}" up -d --wait >/dev/null
-"${POLARIS_DIR}/provision.sh"
-create_airflow_environment
+configure_polaris() {
+  "${POLARIS_DIR}/provision.sh" || return 1
+  create_airflow_environment
+}
 
-echo "Initializing Airflow..."
-"${AIRFLOW_COMPOSE[@]}" up airflow-init --build >/dev/null
+initialize_airflow() {
+  "${AIRFLOW_COMPOSE[@]}" up airflow-init --build
+}
 
-echo "Starting Airflow and Superset..."
-"${AIRFLOW_COMPOSE[@]}" up -d --build --wait >/dev/null
-"${SUPERSET_COMPOSE[@]}" up -d --build --wait superset >/dev/null
+start_airflow_and_superset() {
+  "${AIRFLOW_COMPOSE[@]}" up -d --build --wait || return 1
+  "${SUPERSET_COMPOSE[@]}" up -d --build --wait superset || return 1
+  wait_for_dag
+}
 
-wait_for_dag
-run_pipeline
+register_dashboard_assets() {
+  "${SUPERSET_COMPOSE[@]}" run --rm --no-deps superset-assets
+}
 
-echo "Registering ML metrics and dashboard assets in Superset..."
-"${SUPERSET_COMPOSE[@]}" run --rm --no-deps superset-assets
+mkdir -p "${LOG_DIR}"
+: >"${LOG_FILE}"
 
-cat <<'EOF'
+printf '\n🚀 Lakehouse Setup\n'
+printf '────────────────────────────────────────\n'
 
-Lakehouse setup complete.
+run_step 1 "🪣 Starting RustFS + Polaris..." "Ready" start_rustfs_and_polaris
+run_step 2 "🔐 Configuring Polaris..." "Complete" configure_polaris
+run_step 3 "🌬️  Initializing Airflow..." "Ready" initialize_airflow
+run_step 4 "📊 Starting Airflow + Superset..." "Ready" start_airflow_and_superset
+run_step 5 "▶️  Running sample pipeline..." "Complete" run_pipeline
+run_step 6 "📈 Registering dashboard assets..." "Complete" register_dashboard_assets
 
-Airflow:  http://localhost:8080  (airflow / airflow)
-RustFS:   http://localhost:9001
-Superset: http://localhost:8088  (admin / admin)
-Dashboard: http://localhost:8088/superset/dashboard/xgboost-model-evaluation/
+cat <<EOF
+
+🎉 Lakehouse setup complete!
+
+✓ Airflow:   http://localhost:8080
+✓ Superset:  http://localhost:8088
+✓ RustFS:    http://localhost:9001
+
+Credentials:
+  Airflow  : airflow / airflow
+  Superset : admin / admin
+
+Dashboard:
+  http://localhost:8088/superset/dashboard/xgboost-model-evaluation/
+
+Detailed log:
+  ${LOG_FILE}
 EOF
