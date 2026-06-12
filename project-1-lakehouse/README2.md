@@ -49,14 +49,14 @@ The platform follows a layered lakehouse architecture, separating orchestration,
 
 | Layer          | Technology      | Purpose                                     |
 | -------------- | --------------- | ------------------------------------------- |
-| Orchestration  | <img src="assets/logos/airflow.png" alt="Airflow" height="50">  | Pipeline scheduling and workflow management |
-| Object Storage | <img src="assets/logos/rustfs.svg" alt="RustFS" height="50">          | S3-compatible object storage                |
-| Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="50">  | Open analytical table format                |
-| Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="50">  | Iceberg REST catalog                        |
-| Query Engine   | <img src="assets/logos/duckdb.svg" alt="DuckDB" height="50">          | High-performance analytical processing      |
-| Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="50">             | Declarative data modeling                   |
-| Visualization  | <img src="assets/logos/superset.png" alt="Superset" height="50"> | Dashboarding and data exploration           |
-| Infrastructure | <img src="assets/logos/docker.svg" alt="Docker" height="50">   | Reproducible local deployment               |
+| Orchestration  | <img src="assets/logos/airflow.png" alt="Airflow" height="30">  | Pipeline scheduling and workflow management |
+| Object Storage | <img src="assets/logos/rustfs.svg" alt="RustFS" height="30">          | S3-compatible object storage                |
+| Table Format   | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30">  | Open analytical table format                |
+| Catalog        | <img src="assets/logos/polaris.png" alt="Polaris" height="30">  | Iceberg REST catalog                        |
+| Query Engine   | <img src="assets/logos/duckdb.svg" alt="DuckDB" height="30">          | High-performance analytical processing      |
+| Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="30">             | Declarative data modeling                   |
+| Visualization  | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration           |
+| Infrastructure | <img src="assets/logos/docker.svg" alt="Docker" height="30">   | Reproducible local deployment               |
 
 
 ### 3. Design Decisions
