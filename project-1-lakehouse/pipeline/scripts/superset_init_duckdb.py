@@ -31,6 +31,7 @@ def main():
 
     for view_name in (
         "metrics",
+        "model_comparison",
         "confusion_matrix",
         "feature_importance",
         "roc_curve",
@@ -46,6 +47,8 @@ def main():
 
     view_counts = connection.execute("""
         SELECT 'metrics' AS view_name, count(*) AS row_count FROM ml.metrics
+        UNION ALL
+        SELECT 'model_comparison', count(*) FROM ml.model_comparison
         UNION ALL
         SELECT 'confusion_matrix', count(*) FROM ml.confusion_matrix
         UNION ALL

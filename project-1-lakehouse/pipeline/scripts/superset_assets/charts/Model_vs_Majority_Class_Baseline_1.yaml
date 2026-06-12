@@ -1,0 +1,38 @@
+slice_name: Model vs Majority-Class Baseline
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  adhoc_filters: []
+  datasource: 5__table
+  row_limit: 10000
+  time_range: No filter
+  viz_type: table
+  all_columns:
+  - model
+  - accuracy
+  - balanced_accuracy
+  - true_class_f1
+  - roc_auc
+  - pr_auc
+  order_by_cols: []
+  query_mode: raw
+  server_page_length: 10
+  show_cell_bars: false
+  column_config:
+    accuracy:
+      d3NumberFormat: .1%
+    balanced_accuracy:
+      d3NumberFormat: .1%
+    true_class_f1:
+      d3NumberFormat: .3f
+    roc_auc:
+      d3NumberFormat: .3f
+    pr_auc:
+      d3NumberFormat: .1%
+query_context: null
+cache_timeout: null
+uuid: 30000000-0000-0000-0000-000000000001
+version: 1.0.0
+dataset_uuid: 20000000-0000-0000-0000-000000000005

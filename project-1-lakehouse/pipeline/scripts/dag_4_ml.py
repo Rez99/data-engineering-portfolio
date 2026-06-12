@@ -12,8 +12,11 @@ from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
     classification_report,
     confusion_matrix,
+    f1_score,
     roc_auc_score,
     roc_curve,
 )
@@ -35,6 +38,7 @@ TEST_DATA_PATH = f"{LOCAL_DIR}/test_data.parquet"
 XGBOOST_CACHE_DIR = f"{LOCAL_DIR}/xgboost_cache"
 
 METRICS_PATH = f"{LOCAL_DIR}/metrics.parquet"
+MODEL_COMPARISON_PATH = f"{LOCAL_DIR}/model_comparison.parquet"
 CONFUSION_MATRIX_PATH = f"{LOCAL_DIR}/confusion_matrix.parquet"
 FEATURE_IMPORTANCE_PATH = f"{LOCAL_DIR}/feature_importance.parquet"
 ROC_CURVE_PATH = f"{LOCAL_DIR}/roc_curve.parquet"
@@ -332,9 +336,39 @@ def evaluate_model():
 
     auc = roc_auc_score(y_test, y_prob)
     accuracy = accuracy_score(y_test, y_pred)
+    balanced_accuracy = balanced_accuracy_score(y_test, y_pred)
+    true_f1 = f1_score(y_test, y_pred)
+    pr_auc = average_precision_score(y_test, y_prob)
     report = classification_report(y_test, y_pred, output_dict=True)
     cm = confusion_matrix(y_test, y_pred)
     fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+
+    baseline_pred = np.zeros_like(y_test, dtype=bool)
+    baseline_prob = np.zeros_like(y_prob)
+    model_comparison_df = pd.DataFrame(
+        [
+            {
+                "model": "Always predict False",
+                "accuracy": accuracy_score(y_test, baseline_pred),
+                "balanced_accuracy": balanced_accuracy_score(
+                    y_test, baseline_pred
+                ),
+                "true_class_f1": f1_score(
+                    y_test, baseline_pred, zero_division=0
+                ),
+                "roc_auc": roc_auc_score(y_test, baseline_prob),
+                "pr_auc": average_precision_score(y_test, baseline_prob),
+            },
+            {
+                "model": "XGBoost",
+                "accuracy": accuracy,
+                "balanced_accuracy": balanced_accuracy,
+                "true_class_f1": true_f1,
+                "roc_auc": auc,
+                "pr_auc": pr_auc,
+            },
+        ]
+    )
 
     print("\nROC AUC")
     print("-------")
@@ -347,6 +381,10 @@ def evaluate_model():
     print("\nConfusion Matrix")
     print("----------------")
     print(cm)
+
+    print("\nModel Comparison")
+    print("----------------")
+    print(model_comparison_df.to_string(index=False))
 
     importance = model.get_score(importance_type="gain")
     total_importance = sum(importance.values())
@@ -401,11 +439,13 @@ def evaluate_model():
     )
 
     write_parquet(metrics_df, METRICS_PATH)
+    write_parquet(model_comparison_df, MODEL_COMPARISON_PATH)
     write_parquet(confusion_matrix_df, CONFUSION_MATRIX_PATH)
     write_parquet(feature_importance_df, FEATURE_IMPORTANCE_PATH)
     write_parquet(roc_curve_df, ROC_CURVE_PATH)
 
     print(f"Wrote local metrics: {METRICS_PATH}")
+    print(f"Wrote local model comparison: {MODEL_COMPARISON_PATH}")
     print(f"Wrote local confusion matrix: {CONFUSION_MATRIX_PATH}")
     print(f"Wrote local feature importance: {FEATURE_IMPORTANCE_PATH}")
     print(f"Wrote local ROC curve: {ROC_CURVE_PATH}")
@@ -417,6 +457,9 @@ def write_artifacts_to_rustfs():
     artifacts = {
         MODEL_PATH: f"{ML_OBJECT_PREFIX}/model/xgboost_model.json",
         METRICS_PATH: f"{ML_OBJECT_PREFIX}/metrics/metrics.parquet",
+        MODEL_COMPARISON_PATH: (
+            f"{ML_OBJECT_PREFIX}/metrics/model_comparison.parquet"
+        ),
         CONFUSION_MATRIX_PATH: f"{ML_OBJECT_PREFIX}/metrics/confusion_matrix.parquet",
         FEATURE_IMPORTANCE_PATH: f"{ML_OBJECT_PREFIX}/metrics/feature_importance.parquet",
         ROC_CURVE_PATH: f"{ML_OBJECT_PREFIX}/metrics/roc_curve.parquet",

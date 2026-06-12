@@ -1,0 +1,48 @@
+slice_name: ROC Curve
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_line
+params:
+  adhoc_filters: []
+  annotation_layers:
+  - name: Random classifier
+    annotationType: FORMULA
+    value: x
+    color: '#666666'
+    opacity: opacityMedium
+    style: dotted
+    width: 2
+    show: true
+    showMarkers: false
+    showLabel: false
+  datasource: 4__table
+  row_limit: 10000
+  time_range: No filter
+  viz_type: echarts_timeseries_line
+  groupby: []
+  metrics:
+  - aggregate: MAX
+    column:
+      column_name: tpr
+      filterable: true
+      groupby: true
+      type: DOUBLE
+    expressionType: SIMPLE
+    label: True Positive Rate
+    optionName: metric_tpr_max
+  rich_tooltip: true
+  show_legend: false
+  x_axis: fpr
+  x_axis_title: False Positive Rate
+  y_axis_bounds:
+  - 0
+  - 1
+  y_axis_format: .3f
+  y_axis_title: True Positive Rate
+  echart_options: '{"xAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":16},"nameTextStyle":{"fontSize":17}},"yAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":16},"nameTextStyle":{"fontSize":17}}}'
+query_context: null
+cache_timeout: null
+uuid: 30000000-0000-0000-0000-000000000006
+version: 1.0.0
+dataset_uuid: 20000000-0000-0000-0000-000000000004

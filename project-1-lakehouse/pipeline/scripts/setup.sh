@@ -193,6 +193,7 @@ mkdir '../docker/docker-superset'
 cp ../docker/docker_files/superset-dockerfile ../docker/docker-superset/Dockerfile
 cp superset_config.py ../docker/docker-superset/superset_config.py
 cp superset_init_duckdb.py ../docker/docker-superset/superset_init_duckdb.py
+cp -r superset_assets ../docker/docker-superset/superset_assets
 
 cat > ../docker/docker-superset/docker-compose.yaml <<'EOF'
 services:
@@ -221,6 +222,7 @@ services:
     volumes:
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
       - ./superset_init_duckdb.py:/app/pythonpath/superset_init_duckdb.py:ro
+      - ./superset_assets:/app/pythonpath/superset_assets:ro
       - superset-home:/app/superset_home
     depends_on:
       superset-db:
@@ -239,9 +241,9 @@ services:
           --password "$${SUPERSET_ADMIN_PASSWORD}"
         superset init
         python /app/pythonpath/superset_init_duckdb.py
-        superset set-database-uri \
-          --database_name "XGBoost Model Metrics" \
-          --uri "duckdb:////app/superset_home/ml_metrics.duckdb"
+        superset import-directory \
+          /app/pythonpath/superset_assets \
+          --overwrite
 
   superset:
     image: lakehouse-superset:6.1.0
@@ -336,75 +338,7 @@ then
   exit 1
 fi
 
-SUPERSET_TOKEN=$(
-  curl --fail --silent \
-    -X POST \
-    http://localhost:8088/api/v1/security/login \
-    -H 'Content-Type: application/json' \
-    -d '{
-      "username": "admin",
-      "password": "admin",
-      "provider": "db",
-      "refresh": true
-    }' \
-    | jq -r '.access_token'
-)
-
-SUPERSET_CSRF_TOKEN=$(
-  curl --fail --silent \
-    --cookie-jar /tmp/superset-cookies \
-    -H "Authorization: Bearer ${SUPERSET_TOKEN}" \
-    http://localhost:8088/api/v1/security/csrf_token/ \
-    | jq -r '.result'
-)
-
-SUPERSET_DATABASE_ID=$(
-  curl --fail --silent \
-    -H "Authorization: Bearer ${SUPERSET_TOKEN}" \
-    'http://localhost:8088/api/v1/database/?q=(page_size:100)' \
-    | jq -r '
-        .result[]
-        | select(.database_name == "XGBoost Model Metrics")
-        | .id
-      '
-)
-
-for dataset in metrics confusion_matrix feature_importance roc_curve
-do
-  DATASET_EXISTS=$(
-    curl --fail --silent \
-      -H "Authorization: Bearer ${SUPERSET_TOKEN}" \
-      'http://localhost:8088/api/v1/dataset/?q=(page_size:100)' \
-      | jq -r \
-        --arg dataset "${dataset}" \
-        '
-          any(
-            .result[];
-            .schema == "ml" and .table_name == $dataset
-          )
-        '
-  )
-
-  if [ "${DATASET_EXISTS}" != "true" ]
-  then
-    curl --fail --silent \
-      --cookie /tmp/superset-cookies \
-      -X POST \
-      http://localhost:8088/api/v1/dataset/ \
-      -H "Authorization: Bearer ${SUPERSET_TOKEN}" \
-      -H "X-CSRFToken: ${SUPERSET_CSRF_TOKEN}" \
-      -H 'Content-Type: application/json' \
-      -d "{
-        \"database\": ${SUPERSET_DATABASE_ID},
-        \"schema\": \"ml\",
-        \"table_name\": \"${dataset}\"
-      }" \
-      > /dev/null
-  fi
-done
-
-rm -f /tmp/superset-cookies
-
 echo 'Superset ready at http://localhost:8088'
+echo '   Dashboard: /superset/dashboard/xgboost-model-evaluation/'
 echo '   Username: admin'
 echo '   Password: admin'
