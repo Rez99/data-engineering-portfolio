@@ -16,7 +16,13 @@
 
 ## 1. Executive Summary
 
-This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public e-commerce clickstream dataset, transforms raw events into session-level features, and trains an XGBoost classifier to predict whether a user session contains a purchase. Apache Superset presents the model's performance and feature importance.
+This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. A single setup script provisions and configures the containerized services before Apache Airflow runs the end-to-end data pipeline:
+
+1. Downloads a publicly available e-commerce clickstream dataset in CSV format.
+2. Converts the CSV data to Parquet and loads it into cataloged Apache Iceberg tables.
+3. Transforms the event data into a session-level feature store for machine learning.
+4. Trains an XGBoost classifier to predict whether a user session contains a purchase.
+5. Displays model performance metrics and feature importance in Apache Superset.
 
 ## 2. Architecture
 
@@ -189,16 +195,7 @@ pipeline/
     └── superset_assets/    # Version-controlled dashboard definitions
 ```
 
-#### Data Pipeline
-
-Apache Airflow orchestrates a complete end-to-end lakehouse workflow:
-
-1. Extract raw e-commerce events into RustFS.
-2. Create and query Apache Iceberg tables using DuckDB and Polaris.
-3. Use dbt to aggregate clickstream events into session-level features such as view count, cart-add count, brand, category, and session timing.
-4. Train an XGBoost classifier to predict whether each session contains a purchase, then publish its evaluation metrics.
-
-The generated metrics are then available for interactive exploration through the preconfigured Apache Superset dashboard.
+#### Platform in Action
 
 The figures below show the platform after a successful pipeline execution.
 
