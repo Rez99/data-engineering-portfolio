@@ -16,8 +16,6 @@
 
 ## 1. Executive Summary
 
-#### What was built?
-
 This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public e-commerce clickstream dataset, transforms raw events into session-level features, and trains an XGBoost classifier to predict whether a user session contains a purchase. Apache Superset presents the model's performance and feature importance.
 
 ## 2. Architecture
