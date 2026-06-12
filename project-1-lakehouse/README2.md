@@ -104,11 +104,45 @@ sequenceDiagram
 
 ### 3. Design Decisions
 
-* Benchmarking the alternatives.
-* Why DuckDB?
-* Why CSV → Parquet → Iceberg?
-* Why Airflow, dbt, Polaris, RustFS, and Superset?
-* Designing for low memory usage and cost-efficient scaling.
+#### Benchmarking the Alternatives
+
+Before building the lakehouse, I wanted to answer two questions:
+
+1. How much faster are modern OLAP databases than traditional OLTP databases for analytical workloads?
+2. If OLAP databases already provide excellent performance, what additional problem does a lakehouse solve?
+
+To answer these questions, I benchmarked the same 42 million row ecommerce clickstream dataset across four architectures: file analytics with Pandas, PostgreSQL, DuckDB, and a local lakehouse built with DuckDB, Iceberg, and Polaris.
+
+```mermaid
+xychart-beta
+    title "Query Runtime (seconds)"
+    x-axis ["File Analytics", "OLTP Database", "OLAP Database", "Lakehouse Architecture"]
+    y-axis "Seconds" 0 --> 60
+    bar [70, 59, 0.1, 0.1]
+```
+|Stage|Architecture|Stack|Storage Cost|Memory Cost|Compute Cost|Notes|
+|---|---|---|---|---|---|---|
+|1|File Analytics|Pandas + csv.gz|🟠 Medium|🔴 High|🔴 High|Simple and flexible for exploratory analysis, but limited by available memory.|
+|2|OLTP Database|Postgres|🔴 High|🟢 Low|🔴 High|Optimized for transactions and updates, not large analytical scans.|
+|3|OLAP Database|DuckDB|🟢 Low|🟢 Low|🟢 Low|Columnar OLAP systems dramatically reduce storage and query costs for analytics.|
+|4|Lakehoue Architecture|DuckDB + Iceberg + Polaris|🟢 Low|🟢 Low|🟢 Low|Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities.|
+
+*Representative benchmark query over a 42 million row clickstream dataset.
+
+The benchmarks validated two important ideas. First, columnar OLAP systems dramatically reduce both storage and compute costs compared with traditional row-oriented databases. Second, lakehouses solve a different problem: they decouple storage, metadata, and compute while introducing capabilities such as schema evolution, governance, and ACID transactions. These observations directly informed the architecture of the final platform.
+
+#### Resource-Aware Engineering
+
+A central design goal throughout the project was to make large-scale analytical processing practical on commodity hardware. Rather than relying on large in-memory workflows, the pipeline was deliberately designed around columnar storage, staged processing, and out-of-core execution. The same architectural patterns that enable local development also align with scalable and cost-conscious production engineering.
+
+Several implementation decisions followed naturally from this philosophy:
+
+- **Columnar, out-of-core processing**. The core pipeline uses DuckDB and Parquet rather than materializing the full dataset as an in-memory Pandas DataFrame.
+- **Intermediate persistence**. The ingestion pipeline was redesigned from CSV → Iceberg to CSV → Parquet → Iceberg, separating expensive CSV parsing from Iceberg table creation and reducing peak memory utilization.
+- **Independent model execution**. Large dbt models are orchestrated as separate Airflow tasks, allowing memory to be reclaimed between stages while improving observability and retry granularity.
+- **External-memory machine learning**. The standard Iceberg → Pandas → XGBoost workflow was replaced with a disk-backed pipeline using Parquet and XGBoost's external-memory mode, reducing peak memory usage while preserving model performance.
+
+A common pattern emerged across all layers of the platform: instead of solving scalability challenges by allocating more hardware, large operations were decomposed into smaller stages separated by persisted intermediate artifacts. The total amount of computation remains essentially unchanged, but peak memory consumption is substantially reduced.
 
 ### 4. Pipeline Walkthrough
 
