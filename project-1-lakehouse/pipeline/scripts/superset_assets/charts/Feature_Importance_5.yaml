@@ -29,7 +29,7 @@ params:
   - 0
   - 1
   y_axis_format: .3f
-  echart_options: '{"xAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":16}},"yAxis":{"axisLabel":{"fontSize":16}}}'
+  echart_options: '{"xAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":14}},"yAxis":{"axisLabel":{"fontSize":14}}}'
 query_context: null
 cache_timeout: null
 uuid: 30000000-0000-0000-0000-000000000005

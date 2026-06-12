@@ -40,7 +40,7 @@ params:
   - 1
   y_axis_format: .3f
   y_axis_title: True Positive Rate
-  echart_options: '{"xAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":16},"nameTextStyle":{"fontSize":17}},"yAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":16},"nameTextStyle":{"fontSize":17}}}'
+  echart_options: '{"xAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":14},"nameTextStyle":{"fontSize":14}},"yAxis":{"min":0,"max":1,"interval":0.2,"axisLabel":{"fontSize":14},"nameTextStyle":{"fontSize":14}}}'
 query_context: null
 cache_timeout: null
 uuid: 30000000-0000-0000-0000-000000000006
