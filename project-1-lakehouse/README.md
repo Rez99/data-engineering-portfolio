@@ -18,15 +18,11 @@
 
 #### What was built?
 
-This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public e-commerce clickstream dataset, processes it through an end-to-end analytical pipeline, and presents curated model evaluation metrics through Apache Superset.
-
-#### What does this project demonstrate?
-
-The platform brings together the core components of a modern analytical data stack in a reproducible local environment. It demonstrates practical experience with workflow orchestration, object storage, open table formats, analytical transformation, machine learning, and business intelligence tooling.
+This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public ecommerce clickstream dataset, transforms it into curated analytical and machine learning assets, and exposes the results through Apache Superset.
 
 #### Central Design Philosophy
 
-The pipeline was deliberately designed to make analytical processing practical on commodity hardware. By favoring columnar storage, staged processing, and out-of-core execution over large in-memory workflows, the project applies patterns that are also relevant to scalable and cost-conscious production systems.
+The pipeline was designed to make large-scale analytical processing practical on commodity hardware. By favoring columnar storage, staged processing, and out-of-core execution over large in-memory workflows, it applies patterns that are equally relevant to scalable and cost-conscious production systems.
 
 ## 2. Architecture
 
