@@ -144,16 +144,6 @@ A common pattern emerged across all layers of the platform: instead of solving s
 
 ### 4. Deployment
 
-#### End-to-End Workflow
-
-The local platform demonstrates a complete lakehouse workflow:
-
-1. Airflow extracts ecommerce events into RustFS.
-2. DuckDB writes and queries Iceberg tables registered in Polaris.
-3. dbt builds the analytical session model.
-4. XGBoost trains from the transformed data and publishes evaluation metrics.
-5. Superset reads the generated metrics through DuckDB and serves an interactive model dashboard.
-
 #### Setup
 
 Clone the repository and run the setup script:
@@ -164,17 +154,9 @@ cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
 bash setup.sh
 ```
 
-The setup script preserves existing volumes and performs the following high-level steps:
+The setup script provisions the lakehouse infrastructure, configures the required services, and orchestrates the end-to-end workflow through a single command.
 
-1. Start RustFS and Polaris.
-2. Provision the Iceberg catalog and Airflow credentials.
-3. Initialize and start Airflow.
-4. Wait for service health checks and DAG discovery.
-5. Start Superset and verify availability.
-6. Trigger the Airflow pipeline and wait for successful completion.
-7. Register the generated model metrics and import the Superset dashboard.
-
-Detailed installer output is written to `pipeline/logs/setup.log` and is automatically displayed if a setup step fails.
+<img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
 
 #### Resetting the Environment
 
@@ -184,11 +166,6 @@ To stop the platform and return to a clean local environment, run:
 cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
 bash reset.sh
 ```
-
-The reset script removes the Airflow, Polaris, RustFS, and Superset containers
-and volumes, along with generated credentials and Airflow runtime files. The
-next `bash setup.sh` run rebuilds the environment from the version-controlled
-configuration.
 
 #### Platform Services
 
@@ -219,27 +196,28 @@ pipeline/
     └── superset_assets/    # Version-controlled dashboard definitions
 ```
 
-#### Demonstration
 
-The figures below show the platform during deployment and after a successful pipeline execution.
+#### Data pipeline
 
-**Automated deployment**
+Apache Airflow orchestrates a complete end-to-end lakehouse workflow:
 
-The setup script provisions the lakehouse infrastructure, configures the required services, and orchestrates the end-to-end workflow through a single command.
+1. Extract raw ecommerce events into RustFS.
+1. Create and query Apache Iceberg tables using DuckDB and Polaris.
+1. Build the analytical session model with dbt.
+1. Train an XGBoost model and publish evaluation metrics.
 
-<img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
+The generated metrics are then available for interactive exploration through the pre-configured Apache Superset dashboard.
+
+The figures below show the platform after a successful pipeline execution.
 
 **Apache Airflow**
 
-Airflow orchestrates the ingestion, transformation, and machine learning workflows through a series of independent DAG stages.
-
-<img src="assets/logos/airflow_ui.png" alt="Apache Airflow UI" width="700">
+<img src="assets/logos/airflow_ui.png" alt="Apache Airflow UI" width="1000">
 
 **Apache Superset**
 
-Superset connects directly to the curated analytical outputs and model evaluation metrics, providing an interactive interface for exploring the results.
 
-<img src="assets/logos/superset_ui.png" alt="Apache Superset dashboard" width="700">
+<img src="assets/logos/superset_ui.png" alt="Apache Superset dashboard" width="1000">
 
 
 ### 5. Reflections and Next Steps
