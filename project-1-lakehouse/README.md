@@ -24,6 +24,15 @@ This project builds a fully containerized local lakehouse platform using modern 
 4. Trains an XGBoost classifier to predict whether a user session contains a purchase.
 5. Publishes the model outputs for Apache Superset to read and visualize as performance metrics and feature importance.
 
+```mermaid
+flowchart LR
+    A[Download Clickstream Data]
+    --> B[Load Data into the Lakehouse]
+    --> C[Build Session Feature Store]
+    --> D[Train XGBoost Classifier]
+    --> E[Visualize Model Metrics]
+```
+
 ## 2. Architecture
 
 #### How the Components Fit Together
