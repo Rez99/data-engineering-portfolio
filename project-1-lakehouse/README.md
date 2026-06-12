@@ -18,17 +18,13 @@
 
 #### What was built?
 
-This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public ecommerce clickstream dataset, transforms it into curated analytical and machine learning assets, and exposes the results through Apache Superset.
-
-#### Central Design Philosophy
-
-The pipeline was designed to make large-scale analytical processing practical on commodity hardware. By favoring columnar storage, staged processing, and out-of-core execution over large in-memory workflows, it applies patterns that are equally relevant to scalable and cost-conscious production systems.
+This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. It ingests a public e-commerce clickstream dataset, transforms raw events into session-level features, and trains an XGBoost classifier to predict whether a user session contains a purchase. Apache Superset presents the model's performance and feature importance.
 
 ## 2. Architecture
 
 #### How the Components Fit Together
 
-The platform follows a layered lakehouse architecture that separates orchestration, storage, transformation, machine learning, and visualization into independent components. Apache Airflow orchestrates the pipeline, loading raw data into Apache Iceberg tables backed by S3-compatible object storage. DuckDB and dbt transform the lakehouse data, XGBoost trains and evaluates a conversion model, and Apache Superset presents the resulting metrics.
+The platform follows a layered lakehouse architecture that separates orchestration, storage, transformation, machine learning, and visualization. Apache Airflow orchestrates the workflow, RustFS stores the data, and Polaris catalogs the Iceberg tables. DuckDB and dbt produce session-level features, XGBoost predicts purchase conversion, and Apache Superset presents the evaluation results.
 
 #### High-Level Architecture
 
@@ -69,8 +65,8 @@ sequenceDiagram
 
     rect rgb(242, 230, 255)
         Orchestration->>ML: DAG 4️⃣ > Train + evaluate model
-        Note over ObjectStorage,ML: Read training data
-        ML->>ML: Train model and calculate metrics
+        Note over ObjectStorage,ML: Read session features
+        ML->>ML: Predict purchase conversion<br/>and calculate metrics
         ML->>ObjectStorage: Publish model and metrics
     end
 
@@ -88,7 +84,7 @@ sequenceDiagram
 | Catalog | <img src="assets/logos/polaris.png" alt="Polaris" height="30"> | Iceberg REST catalog |
 | Table Format | <img src="assets/logos/iceberg.png" alt="Iceberg" height="30"> | Open analytical table format |
 | Transformation | <img src="assets/logos/dbt.png" alt="dbt" height="30"> | Declarative data modeling |
-| Machine Learning | <img src="assets/logos/xgboost.png" alt="XGBoost" height="30"> | Memory-efficient model training |
+| Machine Learning | <img src="assets/logos/xgboost.png" alt="XGBoost" height="30"> | Purchase-conversion prediction |
 | Visualization | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration |
 
 ## 3. Design Decisions
@@ -122,16 +118,14 @@ The benchmarks validated two important ideas. First, columnar OLAP systems drama
 
 #### Resource-Aware Engineering
 
-A central design goal throughout the project was to make analytical processing practical on commodity hardware. Rather than relying on large in-memory workflows, the pipeline was designed around columnar storage, staged processing, and out-of-core execution. These patterns support efficient local development and are also relevant to larger production systems.
-
-Several implementation decisions followed naturally from this philosophy:
+Four implementation decisions keep peak memory use manageable on commodity hardware:
 
 - **Columnar, out-of-core processing**. The core pipeline uses DuckDB and Parquet rather than materializing the full dataset as an in-memory Pandas DataFrame.
 - **Intermediate persistence**. The ingestion pipeline was redesigned from CSV → Iceberg to CSV → Parquet → Iceberg, separating expensive CSV parsing from Iceberg table creation and reducing peak memory utilization.
 - **Independent dbt model execution**. Large dbt models are orchestrated as separate Airflow tasks, allowing memory to be reclaimed between stages while improving observability and retry granularity.
 - **External-memory machine learning**. The original Iceberg → Pandas → XGBoost workflow was replaced with a disk-backed pipeline using Parquet and XGBoost's external-memory mode, reducing peak memory usage without requiring the full training dataset in RAM.
 
-A common pattern emerged across all layers of the platform: instead of solving scalability challenges by allocating more hardware, large operations were decomposed into smaller stages separated by persisted intermediate artifacts. The total amount of computation remains essentially unchanged, but peak memory consumption is substantially reduced.
+Together, these choices trade some intermediate storage and orchestration complexity for lower peak memory consumption.
 
 ## 4. Deployment
 
@@ -203,8 +197,8 @@ Apache Airflow orchestrates a complete end-to-end lakehouse workflow:
 
 1. Extract raw e-commerce events into RustFS.
 2. Create and query Apache Iceberg tables using DuckDB and Polaris.
-3. Build the analytical session model with dbt.
-4. Train an XGBoost model and publish evaluation metrics.
+3. Use dbt to aggregate clickstream events into session-level features such as view count, cart-add count, brand, category, and session timing.
+4. Train an XGBoost classifier to predict whether each session contains a purchase, then publish its evaluation metrics.
 
 The generated metrics are then available for interactive exploration through the preconfigured Apache Superset dashboard.
 
@@ -226,7 +220,7 @@ Building this project reinforced that modern data engineering is less about indi
 
 #### Trade-offs and Limitations
 
-The platform is intentionally optimized for reproducibility and efficient local execution. Several implementation choices—such as staged processing and intermediate persistence—favor lower memory consumption over the simplest possible implementation.
+The platform demonstrates a local batch workflow rather than a production deployment. It does not yet address distributed execution, continuous ingestion, automated model retraining, or cloud security and governance.
 
 #### Future Directions
 
