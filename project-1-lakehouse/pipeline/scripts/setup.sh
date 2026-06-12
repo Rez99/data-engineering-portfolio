@@ -8,8 +8,10 @@ echo '✅ Docker ready'
 echo 'Clean up environment...'
 docker compose -f ../docker/docker-airflow/docker-compose.yaml down -v > /dev/null 2>&1
 docker compose -f ../docker/docker-polaris/docker-compose.yaml down -v > /dev/null 2>&1
+docker compose -f ../docker/docker-superset/docker-compose.yaml down -v > /dev/null 2>&1
 rm -rf '../docker/docker-airflow'
 rm -rf '../docker/docker-polaris'
+rm -rf '../docker/docker-superset'
 echo '✅ Environment clean up complete'
 
 
@@ -183,3 +185,142 @@ curl -N \
   "http://localhost:8080/api/v2/dags/${DAG_ID}/dagRuns/${RUN_ID}/wait?interval=30"
 
 echo '✅ DAG runs complete'
+
+
+# Superset
+echo 'Start Superset...'
+mkdir '../docker/docker-superset'
+cp ../docker/docker_files/superset-dockerfile ../docker/docker-superset/Dockerfile
+cp superset_config.py ../docker/docker-superset/superset_config.py
+
+cat > ../docker/docker-superset/docker-compose.yaml <<'EOF'
+services:
+  superset-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: ${SUPERSET_DATABASE_PASSWORD}
+    volumes:
+      - superset-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset -d superset"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  superset-init:
+    image: lakehouse-superset:6.1.0
+    build: .
+    env_file:
+      - .env
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
+      - superset-home:/app/superset_home
+    depends_on:
+      superset-db:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        superset db upgrade
+        superset fab create-admin \
+          --username "$${SUPERSET_ADMIN_USERNAME}" \
+          --firstname "$${SUPERSET_ADMIN_FIRSTNAME}" \
+          --lastname "$${SUPERSET_ADMIN_LASTNAME}" \
+          --email "$${SUPERSET_ADMIN_EMAIL}" \
+          --password "$${SUPERSET_ADMIN_PASSWORD}"
+        superset init
+
+  superset:
+    image: lakehouse-superset:6.1.0
+    build: .
+    env_file:
+      - .env
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
+      - superset-home:/app/superset_home
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      superset-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  superset-db-data:
+  superset-home:
+EOF
+
+SUPERSET_SECRET_KEY=$(openssl rand -hex 42)
+SUPERSET_DATABASE_PASSWORD=$(openssl rand -hex 24)
+
+cat > ../docker/docker-superset/.env <<EOF
+SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+SUPERSET_DATABASE_PASSWORD=${SUPERSET_DATABASE_PASSWORD}
+SUPERSET_DATABASE_URI=postgresql+psycopg2://superset:${SUPERSET_DATABASE_PASSWORD}@superset-db:5432/superset
+
+SUPERSET_ADMIN_USERNAME=admin
+SUPERSET_ADMIN_PASSWORD=admin
+SUPERSET_ADMIN_FIRSTNAME=Superset
+SUPERSET_ADMIN_LASTNAME=Admin
+SUPERSET_ADMIN_EMAIL=admin@example.com
+EOF
+
+if ! docker compose \
+  -f ../docker/docker-superset/docker-compose.yaml \
+  up superset-init --build
+then
+  echo 'Superset initialization failed'
+  exit 1
+fi
+
+if ! docker compose \
+  -f ../docker/docker-superset/docker-compose.yaml \
+  up -d superset
+then
+  echo 'Superset startup failed'
+  exit 1
+fi
+
+SUPERSET_READY=false
+
+for attempt in {1..60}
+do
+  if curl --fail --silent http://localhost:8088/health > /dev/null
+  then
+    SUPERSET_READY=true
+    break
+  fi
+
+  echo "Waiting for Superset (${attempt}/60)..."
+  sleep 5
+done
+
+if [ "${SUPERSET_READY}" != "true" ]
+then
+  docker compose \
+    -f ../docker/docker-superset/docker-compose.yaml \
+    logs --tail=100 superset
+  echo 'Superset health check timed out'
+  exit 1
+fi
+
+echo 'Superset ready at http://localhost:8088'
+echo '   Username: admin'
+echo '   Password: admin'

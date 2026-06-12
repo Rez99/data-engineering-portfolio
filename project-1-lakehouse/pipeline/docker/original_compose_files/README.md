@@ -20,6 +20,21 @@ curl -L https://airflow.apache.org/docs/apache-airflow/3.2.2/docker-compose.yaml
 echo '====== Download docker compose file yaml ======'
 curl -L https://raw.githubusercontent.com/apache/polaris/apache-polaris-1.5.0/site/content/guides/quickstart/docker-compose.yml -o polaris-compose-original.yaml
 ```
+
+## Apache Superset
+- Reference URL: https://superset.apache.org/docs/installation/docker-compose/
+- Docker compose file: https://raw.githubusercontent.com/apache/superset/6.1.0/docker-compose-non-dev.yml
+- Download date: Jun 12 2026
+- Version: 6.1.0
+
+The official Compose file requires a full checkout of the Superset repository.
+It is retained here as a versioned reference. The project setup script generates
+a smaller runtime Compose file based on the official `apache/superset:6.1.0`
+image.
+
+```bash
+curl -L https://raw.githubusercontent.com/apache/superset/6.1.0/docker-compose-non-dev.yml -o superset-compose-original.yaml
+```
 # Clear tables form polaris and s3
 ```bash
 docker exec docker-airflow-airflow-worker-1 bash -c "cd /opt/airflow/lakehouse && dbt show --inline 'select count(*) from polaris.gold.mart_session'"
@@ -132,3 +147,23 @@ Both of the issues encountered during development were ultimately solved by intr
 * **Transform layer:** materialize each dbt model in a separate process rather than building the entire dependency chain in a single invocation.
 
 In both cases, the total amount of computation remains essentially unchanged. The improvement comes from reducing **peak memory utilization** by breaking one large operation into smaller, independently executable stages. Rather than solving the problem by allocating more hardware, the pipeline architecture was adapted to fit the resource constraints of the execution environment.
+
+### 4. External-memory machine learning with XGBoost
+
+The initial machine learning implementation followed the standard scikit-learn workflow:
+
+Iceberg → pandas DataFrame → train_test_split → XGBClassifier.fit()
+
+The feature store was materialized in memory using DuckDB's fetchdf() method before being passed to the XGBoost scikit-learn wrapper. While this approach was straightforward, monitoring the Airflow worker with docker stats showed that model training peaked at approximately 40% of the available 7.75 GB Docker memory allocation, indicating that the entire feature matrix was being held in RAM.
+
+To better align the machine learning stage with the out-of-core philosophy of the rest of the lakehouse pipeline, the training workflow was redesigned to use XGBoost's external-memory mode. Rather than materializing the entire feature store as a pandas DataFrame, DuckDB first exports the feature store to Parquet and performs a deterministic train/test split:
+
+Iceberg → Parquet → train.parquet / test.parquet
+
+Training data is then streamed directly from disk using a custom DataIter implementation backed by Apache Parquet batches and consumed by ExtMemQuantileDMatrix:
+
+train.parquet → ParquetBatchIterator → ExtMemQuantileDMatrix → XGBoost
+
+This allows XGBoost to incrementally construct histogram statistics while reading the training data in fixed-size batches, rather than requiring the complete dataset to reside in memory. The TRAIN_BATCH_ROWS parameter controls the trade-off between memory consumption and disk I/O, providing a tunable mechanism for scaling model training to larger datasets.
+
+Empirical testing showed that this redesign reduced peak memory utilization during model training from approximately 40% to 25% of the available Docker memory allocation, while producing an equivalent predictive model. More importantly, the machine learning stage now follows the same architectural principle as the ingestion and transformation layers: large datasets are processed by streaming from disk, with intermediate artifacts persisted between stages, rather than by materializing the entire workload in memory.
