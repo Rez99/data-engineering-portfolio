@@ -1,3 +1,11 @@
+airflow/.env
+airflow/config/
+airflow/logs/
+airflow/plugins/
+polaris/.env
+superset/.env
+
+# Legacy setup output. These directories can be removed after migration.
 docker-airflow/
 docker-polaris/
 docker-superset/

@@ -6,4 +6,4 @@ services:
       - .:/app
       - ./profiles.yml:/root/.dbt/profiles.yml
     env_file:
-      - ../docker-polaris/.env
+      - ../polaris/.env

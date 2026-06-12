@@ -1,0 +1,71 @@
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.0-alpha.81
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail http://127.0.0.1:9000/health &&
+          curl --fail http://127.0.0.1:9001/rustfs/console/health
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  bucket-setup:
+    image: amazon/aws-cli:2.34.41
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      AWS_ENDPOINT_URL: http://rustfs:9000
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        aws s3api head-bucket --bucket lakehouse-bucket 2>/dev/null ||
+          aws s3 mb s3://lakehouse-bucket
+
+  polaris:
+    image: apache/polaris:1.5.0
+    ports:
+      - "8181:8181"
+      - "8182:8182"
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      bucket-setup:
+        condition: service_completed_successfully
+    environment:
+      AWS_REGION: us-west-2
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      POLARIS_BOOTSTRAP_CREDENTIALS: >-
+        ${POLARIS_REALM},${ROOT_CLIENT_ID},${ROOT_CLIENT_SECRET}
+      polaris.realm-context.realms: ${POLARIS_REALM}
+      quarkus.otel.sdk.disabled: "true"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8182/q/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  rustfs-data:
