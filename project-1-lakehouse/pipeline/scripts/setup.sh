@@ -17,11 +17,34 @@ SUPERSET_COMPOSE=(docker compose -p lakehouse-superset -f "${SUPERSET_DIR}/docke
 
 DAG_ID="lakehouse_0_pipeline"
 RUN_ID="manual_$(date +%s)"
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 USE_IN_PLACE_STATUS=false
+STATUS_COLUMN=64
 
-if [[ -t 1 && "${TERM:-dumb}" != "dumb" ]]; then
+STEP_MESSAGES=(
+  ""
+  "🪣  Starting RustFS + Polaris"
+  "🔐 Configuring Polaris"
+  "🌬️  Initializing Airflow"
+  "🌬️  Starting Airflow"
+  "📊 Starting Superset"
+  "▶️  Running sample pipeline"
+  "📈 Registering dashboard assets"
+)
+
+COLOR_RESET=''
+COLOR_DIM=''
+COLOR_BLUE=''
+COLOR_GREEN=''
+COLOR_RED=''
+
+if [[ -t 1 ]]; then
   USE_IN_PLACE_STATUS=true
+  COLOR_RESET=$'\033[0m'
+  COLOR_DIM=$'\033[2m'
+  COLOR_BLUE=$'\033[36m'
+  COLOR_GREEN=$'\033[32m'
+  COLOR_RED=$'\033[31m'
 fi
 
 log_info() {
@@ -36,34 +59,54 @@ log_error() {
   printf '[%s] ERROR %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${LOG_FILE}"
 }
 
-print_step_start() {
+print_step_line() {
   local step_number="$1"
-  local message="$2"
+  local status="$2"
+  local color="$3"
   local line
-  line="[$step_number/$TOTAL_STEPS] $message"
-
-  printf '%-62s' "${line}"
-}
-
-print_step_result() {
-  local step_number="$1"
-  local message="$2"
-  local result="$3"
-  local line
-  line="[$step_number/$TOTAL_STEPS] $message"
+  line="[$step_number/$TOTAL_STEPS] ${STEP_MESSAGES[$step_number]}"
 
   if [[ "${USE_IN_PLACE_STATUS}" == "true" ]]; then
-    printf '\r\033[2K%-62s %s\n' "${line}" "${result}"
+    printf '%s\033[%dG%s%s%s' \
+      "${line}" \
+      "${STATUS_COLUMN}" \
+      "${color}" \
+      "${status}" \
+      "${COLOR_RESET}"
   else
-    printf ' %s\n' "${result}"
+    printf '%-62s %s' "${line}" "${status}"
+  fi
+}
+
+print_step_list() {
+  local step_number
+
+  for step_number in {1..7}; do
+    print_step_line "${step_number}" "○ Waiting" "${COLOR_DIM}"
+    printf '\n'
+  done
+}
+
+update_step_status() {
+  local step_number="$1"
+  local status="$2"
+  local color="$3"
+
+  if [[ "${USE_IN_PLACE_STATUS}" == "true" ]]; then
+    local rows_up=$((TOTAL_STEPS - step_number + 1))
+    printf '\033[%dA\r\033[2K' "${rows_up}"
+    print_step_line "${step_number}" "${status}" "${color}"
+    printf '\033[%dB\r' "${rows_up}"
+  else
+    print_step_line "${step_number}" "${status}" "${color}"
+    printf '\n'
   fi
 }
 
 show_failure() {
   local step_number="$1"
-  local message="$2"
 
-  print_step_result "${step_number}" "${message}" "❌ Failed"
+  update_step_status "${step_number}" "❌ Failed" "${COLOR_RED}"
   printf '\nDetailed logs: %s\n\n' "${LOG_FILE}" >&2
   printf '%s\n' 'Last 50 log lines:' >&2
   printf '%s\n' '────────────────────────────────────────' >&2
@@ -72,21 +115,21 @@ show_failure() {
 
 run_step() {
   local step_number="$1"
-  local message="$2"
-  local success_status="$3"
-  shift 3
+  local success_status="$2"
+  shift 2
+  local message="${STEP_MESSAGES[$step_number]}"
 
-  print_step_start "${step_number}" "${message}"
+  update_step_status "${step_number}" "● Running" "${COLOR_BLUE}"
   log_info "Step ${step_number}/${TOTAL_STEPS}: ${message}"
 
   if (set -Eeuo pipefail; "$@") >>"${LOG_FILE}" 2>&1; then
     log_success "${message}"
-    print_step_result "${step_number}" "${message}" "✅ ${success_status}"
+    update_step_status "${step_number}" "✓ ${success_status}" "${COLOR_GREEN}"
     return
   fi
 
   log_error "${message}"
-  show_failure "${step_number}" "${message}"
+  show_failure "${step_number}"
   exit 1
 }
 
@@ -241,10 +284,13 @@ initialize_airflow() {
   "${AIRFLOW_COMPOSE[@]}" up airflow-init --build
 }
 
-start_airflow_and_superset() {
+start_airflow() {
   "${AIRFLOW_COMPOSE[@]}" up -d --build --wait || return 1
-  "${SUPERSET_COMPOSE[@]}" up -d --build --wait superset || return 1
   wait_for_dag
+}
+
+start_superset() {
+  "${SUPERSET_COMPOSE[@]}" up -d --build --wait superset
 }
 
 register_dashboard_assets() {
@@ -256,13 +302,15 @@ mkdir -p "${LOG_DIR}"
 
 printf '\n🚀 Lakehouse Setup\n'
 printf '────────────────────────────────────────\n'
+print_step_list
 
-run_step 1 "🪣 Starting RustFS + Polaris..." "Ready" start_rustfs_and_polaris
-run_step 2 "🔐 Configuring Polaris..." "Complete" configure_polaris
-run_step 3 "🌬️  Initializing Airflow..." "Ready" initialize_airflow
-run_step 4 "📊 Starting Airflow + Superset..." "Ready" start_airflow_and_superset
-run_step 5 "▶️  Running sample pipeline..." "Complete" run_pipeline
-run_step 6 "📈 Registering dashboard assets..." "Complete" register_dashboard_assets
+run_step 1 "Ready" start_rustfs_and_polaris
+run_step 2 "Complete" configure_polaris
+run_step 3 "Ready" initialize_airflow
+run_step 4 "Ready" start_airflow
+run_step 5 "Ready" start_superset
+run_step 6 "Complete" run_pipeline
+run_step 7 "Complete" register_dashboard_assets
 
 cat <<EOF
 
