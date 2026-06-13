@@ -176,7 +176,7 @@ and Airflow runtime files. The next setup run rebuilds the environment from the
 version-controlled configuration.
 
 #### Platform Services
-
+After a successful deployment, the following services are available locally:
 | Service | Purpose | URL | Credentials |
 | --- | --- | --- | --- |
 | Apache Airflow | Pipeline orchestration | http://localhost:8080 | `airflow` / `airflow` |

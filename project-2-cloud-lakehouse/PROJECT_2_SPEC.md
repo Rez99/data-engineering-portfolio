@@ -74,35 +74,48 @@ By the end of the project, a reviewer should be able to:
 | --------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | **M1. Architecture & Repository Setup** | Define the cloud architecture, project scope, and repository structure.         | Foundational decisions are recorded as ADRs, and the architecture diagram and repository skeleton are complete. |
 | **M2. Infrastructure Provisioning**     | Provision core cloud resources using Terraform.                                 | `terraform apply` completes successfully and required resources exist.              |
-| **M3. Compute & Orchestration**         | Deploy Airflow (or equivalent orchestration environment).                       | Airflow services are reachable and healthy.                                         |
+| **M3. Compute & Orchestration**         | Deploy the selected compute and orchestration services.                         | Workflows can invoke and monitor a Cloud Run Job successfully.                       |
 | **M4. Cloud Storage Layer**             | Configure cloud object storage for pipeline inputs and outputs.                 | Test files can be written to and read from cloud storage.                           |
-| **M5. Pipeline Deployment**             | Adapt Project 1 ingestion and transformation pipeline to the cloud environment. | Running the DAG successfully produces the expected downstream artifacts.            |
+| **M5. Pipeline Deployment**             | Adapt Project 1 ingestion and transformation pipeline to the cloud environment. | Running the workflow successfully produces the expected downstream artifacts.       |
 | **M6. Analytics & Consumption**         | Expose pipeline outputs for downstream consumption.                             | Data products or dashboards can be queried successfully.                            |
 | **M7. Automation & Validation**         | Add deployment scripts, validation checks, and basic CI where appropriate.      | Automated checks complete successfully and deployment process is documented.        |
 | **M8. Documentation & Demo**            | Finalize documentation and create a portfolio-quality demonstration.            | README and demo materials allow a reviewer to understand and reproduce the project. |
 
-### Milestone 1 Decisions
+### Milestone 1 Plan
 
-Milestone 1 must resolve and document the decisions that shape the implementation:
+Milestone 1 covers the complete architecture and repository design. Its decisions are documented as ADRs, but they remain part of this single milestone rather than becoming separate implementation milestones.
 
-1. **Cloud provider**: Select AWS, Azure, or GCP.
-2. **Service mapping**: Decide which cloud services replace or host the Project 1 components.
-3. **Orchestration model**: Choose between managed Airflow, self-hosted Airflow, or an appropriate alternative.
-4. **Table format and catalog**: Decide whether to retain Apache Iceberg and select its catalog.
-5. **Machine learning scope**: Decide whether Project 2 includes the Project 1 training and evaluation workflow.
-6. **Analytics and consumption**: Select how users will query data and inspect outputs.
-7. **Cost and teardown policy**: Establish a working budget, resource limits, and cleanup expectations.
-8. **Dataset scope**: Select the dataset size used for deployment and verification.
+Milestone 1 is intentionally bounded to the following three ADRs:
 
-These are architecture decisions within Milestone 1 rather than separate implementation milestones. Decisions should be recorded under `docs/adr/` before dependent infrastructure is built.
+| ADR | Decision | Status |
+| --- | --- | --- |
+| [ADR-0001](docs/adr/0001-cloud-provider.md) | Cloud provider | Accepted |
+| [ADR-0002](docs/adr/0002-service-mapping.md) | Candidate GCP service mappings and trade-offs | Accepted |
+| [ADR-0003](docs/adr/0003-cloud-architecture.md) | Selected cloud architecture and rationale | Proposed |
+
+ADR-0002 contains the neutral comparison. ADR-0003 records the selected storage, catalog, query, transformation, orchestration, machine learning, visualization, region, dataset, cost, and teardown choices.
+
+The ADR count should not expand beyond three during Milestone 1 unless implementation is blocked by a consequential decision that cannot reasonably be included in ADR-0003.
+
+#### Milestone 1 Progress
+
+- **Completed ADRs**: Cloud provider and candidate service mapping.
+- **In progress**: Selected cloud architecture.
+- **Agreed within ADR-0003**: Workflows and Cloud Scheduler for orchestration; a temporary Managed Spark cluster, Polaris, Iceberg, Cloud Storage, and dbt Core for lakehouse processing; XGBoost in a Cloud Run Job; Looker Studio; `us-central1`; and a deterministic 10,000-row demonstration dataset.
+- **Validation required**: Prove dbt → Spark Thrift → Polaris → Cloud Storage integration and Polaris persistence in Cloud SQL.
+- **Remaining within ADR-0003**: Validate the selected architecture, size its resources, estimate demonstration-run cost, and confirm automatic teardown.
+- **Completed deliverables**: Repository skeleton.
+- **Remaining deliverables**: Accepted ADRs, completed `docs/architecture.md`, and a validated architecture diagram.
 
 #### Milestone 1 Acceptance Criteria
 
 - `docs/architecture.md` describes the selected architecture and includes a current architecture diagram.
 - The repository skeleton reflects the selected components and deployment workflow.
 - Foundational ADRs have an `Accepted` status.
-- Each decision above is covered by an ADR, either individually or as part of a closely related decision.
 - Expected cloud costs and teardown behavior are documented.
+- ADR-0001 through ADR-0003 are accepted.
+
+Once these criteria are met, Milestone 1 is complete and work moves to Milestone 2. Further architecture refinements should be handled during the milestone they affect rather than extending Milestone 1.
 
 ---
 
