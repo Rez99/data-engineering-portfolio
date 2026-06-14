@@ -132,3 +132,17 @@ docker run --rm -it \
   --location=us-central1 \
   --project=rez-cloud-lakehouse
 ```
+
+
+
+9. Bootsrap Polaris
+```bash
+docker run --rm -it \
+  -v "$PWD/.credentials/gcloud:/config" \
+  -e CLOUDSDK_CONFIG=/config \
+  gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable \
+  gcloud run jobs execute lakehouse-polaris-bootstrap \
+  --region=us-central1 \
+  --project=rez-cloud-lakehouse \
+  --wait
+  ```

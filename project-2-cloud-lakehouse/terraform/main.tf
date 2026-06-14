@@ -231,10 +231,11 @@ resource "google_sql_database" "polaris" {
 }
 
 resource "google_sql_user" "polaris" {
-  project  = var.project_id
-  name     = var.polaris_database_user
-  instance = google_sql_database_instance.polaris.name
-  password = var.polaris_database_password
+  project         = var.project_id
+  name            = var.polaris_database_user
+  instance        = google_sql_database_instance.polaris.name
+  password        = var.polaris_database_password
+  deletion_policy = "ABANDON"
 }
 
 resource "google_service_account" "polaris" {
