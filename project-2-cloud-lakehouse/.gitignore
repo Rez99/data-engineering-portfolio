@@ -9,3 +9,6 @@ terraform/*.tfplan
 
 # Local cloud credentials must never be committed
 .credentials/
+
+# Local validation artifacts
+.validation/

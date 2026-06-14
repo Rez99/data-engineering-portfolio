@@ -3,7 +3,9 @@
 Project 2 migrates the local lakehouse from Project 1 to Google Cloud while
 retaining Apache Iceberg, Apache Polaris, dbt Core, and XGBoost.
 
-The project is currently in Milestone 1: architecture and repository setup.
+The architecture prerequisites and **M1: Extract** are complete. The next
+data-flow milestone is **M2: Load**, which converts the raw clickstream sample
+into a bronze Iceberg table registered in Polaris.
 See [PROJECT_2_SPEC.md](PROJECT_2_SPEC.md) for the delivery plan and
 [docs/architecture.md](docs/architecture.md) for the selected architecture.
 
@@ -13,7 +15,7 @@ See [PROJECT_2_SPEC.md](PROJECT_2_SPEC.md) for the delivery plan and
 project-2-cloud-lakehouse/
 ├── dbt/                  # dbt project adapted for Spark
 ├── docs/                 # Architecture documentation and ADRs
-├── scripts/              # Human-facing deployment and teardown commands
+├── setup.sh              # Optional end-to-end development setup
 ├── services/
 │   ├── ingestion/        # Clickstream sampling and ingestion Cloud Run Job
 │   ├── ml/               # XGBoost training and evaluation Cloud Run Job
@@ -24,8 +26,8 @@ project-2-cloud-lakehouse/
 └── workflows/            # Google Cloud Workflows definitions
 ```
 
-The directories are placeholders for later milestones. Implementation will be
-added incrementally after the architecture validation spike.
+Implementation is added incrementally as each milestone provisions and
+validates its assigned components.
 
 ## Local Tooling
 
@@ -33,33 +35,100 @@ Docker is the only local runtime required. Google Cloud CLI and Terraform run
 from pinned container images, so contributors do not need to install either
 tool locally.
 
-Authenticate and set the target project:
-
-```bash
-./scripts/gcloud.sh auth login --update-adc
-./scripts/gcloud.sh config set project rez-cloud-lakehouse
-./scripts/gcloud.sh config set run/region us-central1
-```
-
 The login and Application Default Credentials are stored in the gitignored
-`.credentials/gcloud/` directory. Terraform detects and mounts those
-credentials read-only.
+`.credentials/gcloud/` directory. The commands below mount those credentials
+into the Terraform and Google Cloud CLI containers.
 
-Run Terraform:
+For an automated end-to-end run:
 
 ```bash
-./scripts/terraform.sh version
-./scripts/terraform.sh init
-./scripts/terraform.sh plan
+./setup.sh
 ```
 
-For non-interactive environments, a separate credential file can override the
-project-local login:
+To destroy all Terraform-managed resources:
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="$HOME/path/to/gcp-credentials.json"
-./scripts/terraform.sh plan
+./destroy.sh
 ```
 
 Credential files, Terraform state, plans, and local variable files are ignored
 by Git.
+
+## How to run
+
+1. Start the Terraform container:
+
+```bash
+docker run -d \
+  --name lakehouse-terraform \
+  --entrypoint /bin/sh \
+  -v "$PWD:/workspace" \
+  -v "$PWD/.credentials/gcloud/application_default_credentials.json:/credentials/gcp.json:ro" \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
+  -w /workspace/terraform \
+  hashicorp/terraform:1.15.6 \
+  -c "sleep infinity"
+```
+2. Enter it:
+```bash
+docker exec -it lakehouse-terraform /bin/sh
+```
+3. Inside the container:
+```bash
+terraform init
+terraform apply
+```
+
+4. Exit the Terraform container and authenticate Docker with Artifact Registry:
+
+```bash
+exit
+
+docker run --rm \
+  -v "$PWD/.credentials/gcloud:/config" \
+  -e CLOUDSDK_CONFIG=/config \
+  gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable \
+  gcloud auth print-access-token |
+docker login \
+  --username oauth2accesstoken \
+  --password-stdin \
+  us-central1-docker.pkg.dev
+```
+
+5. Build and push the real ingestion image:
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --target runtime \
+  --tag us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:dev-amd64 \
+  --push \
+  services/ingestion
+```
+
+6. Re-enter the Terraform container:
+
+```bash
+docker exec -it lakehouse-terraform /bin/sh
+```
+
+7. Update the Cloud Run Job to use the ingestion image:
+
+```bash
+terraform apply -var='ingestion_image=us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:dev-amd64'
+```
+
+8. Exit the Terraform container and manually start `lakehouse-extract`:
+
+```bash
+exit
+
+docker run --rm -it \
+  -v "$PWD/.credentials/gcloud:/config" \
+  -e CLOUDSDK_CONFIG=/config \
+  gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable \
+  gcloud workflows run lakehouse-extract \
+  --location=us-central1 \
+  --project=rez-cloud-lakehouse
+```

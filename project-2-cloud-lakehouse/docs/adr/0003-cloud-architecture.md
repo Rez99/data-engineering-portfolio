@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -29,7 +29,7 @@ The selected architecture should:
 | Machine Learning | XGBoost in Docker | XGBoost in a Cloud Run Job |
 | Visualization | Apache Superset | Looker Studio |
 
-The Polaris, Spark, dbt, machine learning, and visualization selections remain subject to the validation and final approval requirements below.
+These selections define the target architecture. Their implementation assumptions will be validated incrementally during the milestones that provision and deploy them.
 
 ## Operational Scope
 
@@ -37,14 +37,14 @@ The Polaris, Spark, dbt, machine learning, and visualization selections remain s
 | --- | --- |
 | GCP project | `rez-cloud-lakehouse` |
 | Region | `us-central1` |
-| Demonstration dataset | A deterministic 10,000-row sample of the public ecommerce clickstream dataset |
+| Demonstration dataset | The header and first 10,000 data rows from the public [REES46 October 2019 ecommerce clickstream](https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz) |
 | Machine learning | XGBoost training and evaluation in a Cloud Run Job |
 | Visualization | Looker Studio |
 | Local tooling | Dockerized Google Cloud CLI and Terraform; neither tool is installed locally |
 | Monthly budget | An initial USD 25 budget with alerts at 50%, 80%, and 100% |
 | Teardown | Delete temporary Spark resources after every workflow run and use Terraform to destroy persistent demonstration infrastructure |
 
-The 10,000-row sample keeps runs fast and inexpensive while preserving the same ingestion, Iceberg, dbt, machine-learning, and visualization stages as the complete pipeline. The sampling rule must be deterministic so repeated deployments process the same observations.
+The extractor will stream the compressed source and stop after the header and first 10,000 data rows. It will not download or materialize the complete dataset locally. This deterministic sample keeps runs fast and inexpensive while preserving the same ingestion, Iceberg, dbt, machine-learning, and visualization stages as the complete pipeline.
 
 Budget alerts provide notification rather than a hard spending cap. Cost control therefore also depends on zero minimum Cloud Run instances, bounded job timeouts, automatic Spark-cluster deletion on success and failure, a maximum cluster lifetime, and documented `terraform destroy` instructions.
 
@@ -141,40 +141,32 @@ This preserves:
 
 The trade-off is additional cluster startup time, network configuration, and cost while the cluster is running. Workflows must delete the cluster after success or failure, and the cluster should also have a scheduled deletion safeguard.
 
-## Required Validation Spike
+## Implementation Risks
 
-Before ADR-0003 is accepted, a minimal technical spike must prove:
+Acceptance of this ADR approves the target architecture; it does not claim that every integration has already been deployed. The following assumptions must be validated during infrastructure and pipeline milestones:
 
-1. A Polaris Cloud Run Service can persist its state in Cloud SQL for PostgreSQL.
-2. Polaris can create and access a GCS-backed Iceberg catalog using service-account credentials.
-3. A temporary Managed Spark cluster can load Iceberg and connect to Polaris.
-4. Spark can create an Iceberg table through Polaris, write rows to Cloud Storage, and read them back.
-5. The cluster can expose a private Spark Thrift endpoint.
-6. A dbt Core Cloud Run Job can connect to the endpoint and materialize a downstream Iceberg model.
-7. Workflows can delete the cluster after success and failure.
+1. **Validated in M1:** Terraform can provision a private GCS bucket, and authenticated tooling can upload, download, compare, and delete an object.
+2. **M2:** Polaris on Cloud Run can persist catalog state in Cloud SQL for PostgreSQL.
+3. **M2:** Polaris can create and access a GCS-backed Iceberg catalog using service-account credentials.
+4. **M2:** A temporary Managed Spark cluster can load Iceberg and connect to Polaris.
+5. **M2:** Spark can create an Iceberg table through Polaris, write rows to Cloud Storage, and read them back.
+6. **M3:** The cluster can expose a private Spark Thrift endpoint that a dbt Core Cloud Run Job can use.
+7. **M2-M3:** Workflows can delete temporary Spark resources after success and failure.
 
-If the temporary cluster and Thrift approach fails, the fallback options are a persistent managed Spark cluster, a supported third-party Spark platform, or BigQuery with `dbt-bigquery`.
-
-## Remaining Choices
-
-Before this ADR can be accepted:
-
-1. Complete the dbt, Spark Thrift, Polaris, Cloud SQL, and Cloud Storage validation spike.
-2. Select resource sizes and estimate the cost of one demonstration run.
-3. Confirm the automatic teardown behavior through the validation spike.
-4. Update the architecture diagram if the validation spike changes the selected components.
+If implementation invalidates an assumption, this ADR will be amended. The principal fallback for the Spark and dbt integration is BigQuery with `dbt-bigquery`; intermediate options include a persistent managed Spark cluster or a supported third-party Spark platform.
 
 ## Cost Implications
 
-The architecture favors services with usage-based billing and little idle cost. Implementation must include:
+The architecture favors services with usage-based billing and little idle cost.
 
-- Expected cost by service and demonstration run.
-- CPU and memory limits for each Cloud Run Job.
-- Master, worker, memory, disk, autoscaling, and maximum-lifetime settings for the Managed Spark cluster.
-- Workflow retry and timeout limits.
-- A USD 25 monthly budget with alerts at 50%, 80%, and 100%.
-- Terraform-based teardown instructions.
-- Any persistent resources that continue to incur charges after pipeline execution.
+| Cost behavior | Services | Control |
+| --- | --- | --- |
+| Persistent while provisioned | Cloud SQL; stored Cloud Storage data | Use the smallest development database, keep the 10,000-row dataset small, and destroy demonstration infrastructure when it is not needed. |
+| Billed while jobs or requests run | Cloud Run Jobs, Cloud Run Service, Workflows | Set zero minimum Cloud Run instances, bounded timeouts, retry limits, and small CPU and memory allocations. |
+| Potentially highest cost per run | Temporary Managed Spark cluster | Use minimum viable nodes, scheduled deletion, and workflow cleanup on success and failure. |
+| No separate infrastructure charge | Terraform, dbt Core, Apache Iceberg, Apache Polaris, XGBoost | Underlying compute, database, network, and storage usage still incur GCP charges. |
+
+The project uses an initial USD 25 monthly budget with alerts at 50%, 80%, and 100%. M2 must record selected resource sizes and refine the estimated cost per demonstration run before provisioning the full platform.
 
 ## Relationship to ADR-0002
 

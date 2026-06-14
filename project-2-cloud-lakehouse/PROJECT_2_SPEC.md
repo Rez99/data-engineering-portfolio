@@ -70,52 +70,46 @@ By the end of the project, a reviewer should be able to:
 
 ## 5. Major Milestones
 
-| Milestone                               | Objective                                                                       | Acceptance Criteria                                                                 |
-| --------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **M1. Architecture & Repository Setup** | Define the cloud architecture, project scope, and repository structure.         | Foundational decisions are recorded as ADRs, and the architecture diagram and repository skeleton are complete. |
-| **M2. Infrastructure Provisioning**     | Provision core cloud resources using Terraform.                                 | `terraform apply` completes successfully and required resources exist.              |
-| **M3. Compute & Orchestration**         | Deploy the selected compute and orchestration services.                         | Workflows can invoke and monitor a Cloud Run Job successfully.                       |
-| **M4. Cloud Storage Layer**             | Configure cloud object storage for pipeline inputs and outputs.                 | Test files can be written to and read from cloud storage.                           |
-| **M5. Pipeline Deployment**             | Adapt Project 1 ingestion and transformation pipeline to the cloud environment. | Running the workflow successfully produces the expected downstream artifacts.       |
-| **M6. Analytics & Consumption**         | Expose pipeline outputs for downstream consumption.                             | Data products or dashboards can be queried successfully.                            |
-| **M7. Automation & Validation**         | Add deployment scripts, validation checks, and basic CI where appropriate.      | Automated checks complete successfully and deployment process is documented.        |
-| **M8. Documentation & Demo**            | Finalize documentation and create a portfolio-quality demonstration.            | README and demo materials allow a reviewer to understand and reproduce the project. |
+The milestones follow the movement of data through the pipeline. Infrastructure
+is introduced only when the current data stage requires it.
 
-### Milestone 1 Plan
+**Status key:** 🔴 Not started · 🟡 Started · 🟢 Completed
 
-Milestone 1 covers the complete architecture and repository design. Its decisions are documented as ADRs, but they remain part of this single milestone rather than becoming separate implementation milestones.
-
-Milestone 1 is intentionally bounded to the following three ADRs:
-
-| ADR | Decision | Status |
+| Milestone | Data outcome | Status |
 | --- | --- | --- |
-| [ADR-0001](docs/adr/0001-cloud-provider.md) | Cloud provider | Accepted |
-| [ADR-0002](docs/adr/0002-service-mapping.md) | Candidate GCP service mappings and trade-offs | Accepted |
-| [ADR-0003](docs/adr/0003-cloud-architecture.md) | Selected cloud architecture and rationale | Proposed |
+| **M1. Extract** | Public ecommerce clickstream → raw Cloud Storage | 🟢 Completed |
+| **M2. Load** | Raw CSV → bronze Iceberg table registered in Polaris | 🔴 Not started |
+| **M3. Transform** | Bronze events → tested session-level feature data | 🔴 Not started |
+| **M4. Train** | Session features → XGBoost model, metrics, and evaluation artifacts | 🔴 Not started |
+| **M5. Consume** | Reporting outputs → model-performance dashboard | 🔴 Not started |
 
-ADR-0002 contains the neutral comparison. ADR-0003 records the selected storage, catalog, query, transformation, orchestration, machine learning, visualization, region, dataset, cost, and teardown choices.
+Architecture selection and repository setup are completed prerequisites rather
+than data-flow milestones. ADR-0001 through ADR-0003 are accepted, and
+`docs/architecture.md` records the target architecture.
 
-The ADR count should not expand beyond three during Milestone 1 unless implementation is blocked by a consequential decision that cannot reasonably be included in ADR-0003.
+### M1: Extract
 
-#### Milestone 1 Progress
+**Outcome:** Workflows triggers a container that streams the header and first
+10,000 ecommerce clickstream rows from the internet into Cloud Storage.
 
-- **Completed ADRs**: Cloud provider and candidate service mapping.
-- **In progress**: Selected cloud architecture.
-- **Agreed within ADR-0003**: Workflows and Cloud Scheduler for orchestration; a temporary Managed Spark cluster, Polaris, Iceberg, Cloud Storage, and dbt Core for lakehouse processing; XGBoost in a Cloud Run Job; Looker Studio; `us-central1`; and a deterministic 10,000-row demonstration dataset.
-- **Validation required**: Prove dbt → Spark Thrift → Polaris → Cloud Storage integration and Polaris persistence in Cloud SQL.
-- **Remaining within ADR-0003**: Validate the selected architecture, size its resources, estimate demonstration-run cost, and confirm automatic teardown.
-- **Completed deliverables**: Repository skeleton.
-- **Remaining deliverables**: Accepted ADRs, completed `docs/architecture.md`, and a validated architecture diagram.
+| Mini-milestone | Deliverable | Why it is needed | Status |
+| --- | --- | --- | --- |
+| **M1.1 Storage foundation** | Terraform provisions the private raw GCS bucket. | Extracted data requires a durable landing location. | 🟢 Completed |
+| **M1.2 Extract compute** | Terraform provisions Artifact Registry, IAM, and the ingestion Cloud Run Job. | The extraction code needs a secure image registry, execution environment, and permission to write to GCS. | 🟢 Completed |
+| **M1.3 Extraction logic** | The container streams the header and first 10,000 rows directly into GCS without materializing the full source dataset. | This is the actual Extract operation and its memory-safe sampling behavior. | 🟢 Completed |
+| **M1.4 Orchestration** | Workflows invokes and monitors the ingestion Cloud Run Job. | It establishes the orchestration pattern that later pipeline stages will reuse. | 🟢 Completed |
+| **M1.5 Validation** | Verify the object location, schema, and exact row count. | A successful job alone does not prove that the extracted data is correct. | 🟢 Completed |
 
-#### Milestone 1 Acceptance Criteria
+M1 intentionally excludes Cloud Scheduler, Polaris, Cloud SQL, Iceberg, Spark,
+dbt, XGBoost, and Looker Studio. Those components are introduced only when a
+later data-flow milestone requires them.
 
-- `docs/architecture.md` describes the selected architecture and includes a current architecture diagram.
-- The repository skeleton reflects the selected components and deployment workflow.
-- Foundational ADRs have an `Accepted` status.
-- Expected cloud costs and teardown behavior are documented.
-- ADR-0001 through ADR-0003 are accepted.
-
-Once these criteria are met, Milestone 1 is complete and work moves to Milestone 2. Further architecture refinements should be handled during the milestone they affect rather than extending Milestone 1.
+M1 was verified by a successful `lakehouse-extract` workflow execution. The
+ingestion job independently reopened the uploaded object and confirmed valid
+gzip-compressed CSV, exactly 10,000 data rows, and the 9 expected columns.
+After verification, Terraform destroys the milestone environment to avoid idle
+cloud costs; the configuration can recreate it when the next milestone needs
+the shared resources.
 
 ---
 
