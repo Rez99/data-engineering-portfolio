@@ -78,7 +78,7 @@ is introduced only when the current data stage requires it.
 | Milestone | Data outcome | Status |
 | --- | --- | --- |
 | **M1. Extract** | Public ecommerce clickstream → raw Cloud Storage | 🟢 Completed |
-| **M2. Load** | Raw CSV → bronze Iceberg table registered in Polaris | 🔴 Not started |
+| **M2. Load** | Raw CSV → bronze Iceberg table registered in Polaris | 🟡 Started |
 | **M3. Transform** | Bronze events → tested session-level feature data | 🔴 Not started |
 | **M4. Train** | Session features → XGBoost model, metrics, and evaluation artifacts | 🔴 Not started |
 | **M5. Consume** | Reporting outputs → model-performance dashboard | 🔴 Not started |
@@ -110,6 +110,19 @@ gzip-compressed CSV, exactly 10,000 data rows, and the 9 expected columns.
 After verification, Terraform destroys the milestone environment to avoid idle
 cloud costs; the configuration can recreate it when the next milestone needs
 the shared resources.
+
+### M2: Load
+
+**Outcome:** A temporary Spark cluster converts the raw CSV sample into a
+bronze Iceberg table stored in Cloud Storage and registered in Polaris.
+
+| Mini-milestone | Deliverable | Acceptance criterion | Status |
+| --- | --- | --- | --- |
+| **M2.1 Deploy Polaris** | Cloud SQL for PostgreSQL, a one-time bootstrap job, and a Polaris Cloud Run service. | Bootstrap creates the PostgreSQL schema and `POLARIS` realm; Polaris becomes healthy and can issue a root OAuth token. | 🟢 Completed |
+| **M2.2 Configure warehouse** | A Polaris catalog backed by the GCS Iceberg warehouse. | A namespace and test table can be created through Polaris. | 🟢 Completed |
+| **M2.3 Enable Spark** | Dataproc API, Spark service account, and required IAM. | A minimal temporary Spark cluster can connect to Polaris. | 🔴 Not started |
+| **M2.4 Run the load** | Workflow creates Dataproc, loads CSV into Iceberg through Polaris, and deletes the cluster. | The load completes and the temporary cluster is removed. | 🔴 Not started |
+| **M2.5 Validate** | Catalog, schema, row-count, and GCS-file checks. | Polaris reports the table with 10,000 rows and the expected Iceberg files exist in GCS. | 🔴 Not started |
 
 ---
 

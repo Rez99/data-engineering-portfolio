@@ -1,6 +1,8 @@
 locals {
   required_services = toset([
     "artifactregistry.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "sqladmin.googleapis.com",
     "run.googleapis.com",
     "serviceusage.googleapis.com",
     "storage.googleapis.com",
@@ -192,5 +194,267 @@ resource "google_workflows_workflow" "extract" {
     google_project_service_identity.workflows,
     google_project_iam_member.workflow_run_viewer,
     google_project_service.required,
+  ]
+}
+
+resource "google_sql_database_instance" "polaris" {
+  project          = var.project_id
+  name             = "lakehouse-polaris"
+  region           = var.region
+  database_version = "POSTGRES_16"
+
+  deletion_protection = false
+
+  settings {
+    tier              = "db-f1-micro"
+    edition           = "ENTERPRISE"
+    availability_type = "ZONAL"
+    disk_size         = 10
+    disk_type         = "PD_SSD"
+
+    backup_configuration {
+      enabled = false
+    }
+
+    ip_configuration {
+      ipv4_enabled = true
+    }
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_sql_database" "polaris" {
+  project  = var.project_id
+  name     = var.polaris_database_name
+  instance = google_sql_database_instance.polaris.name
+}
+
+resource "google_sql_user" "polaris" {
+  project  = var.project_id
+  name     = var.polaris_database_user
+  instance = google_sql_database_instance.polaris.name
+  password = var.polaris_database_password
+}
+
+resource "google_service_account" "polaris" {
+  project      = var.project_id
+  account_id   = "lakehouse-polaris"
+  display_name = "Lakehouse Polaris service"
+  description  = "Runtime identity for Polaris and its Cloud SQL connection."
+}
+
+resource "google_project_iam_member" "polaris_cloud_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.polaris.email}"
+}
+
+resource "google_storage_bucket_iam_member" "polaris_warehouse_object_admin" {
+  bucket = google_storage_bucket.validation.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.polaris.email}"
+}
+
+resource "google_service_account_iam_member" "polaris_self_token_creator" {
+  service_account_id = google_service_account.polaris.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.polaris.email}"
+}
+
+resource "google_cloud_run_v2_service" "polaris" {
+  project  = var.project_id
+  name     = "lakehouse-polaris"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  deletion_protection = false
+
+  template {
+    service_account = google_service_account.polaris.email
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 1
+    }
+
+    containers {
+      name  = "cloud-sql-proxy"
+      image = var.cloud_sql_proxy_image
+
+      args = [
+        "--address=0.0.0.0",
+        "--port=5432",
+        google_sql_database_instance.polaris.connection_name,
+      ]
+
+      resources {
+        limits = {
+          cpu    = "0.25"
+          memory = "256Mi"
+        }
+      }
+    }
+
+    containers {
+      name  = "polaris"
+      image = var.polaris_image
+
+      ports {
+        container_port = 8080
+      }
+
+      env {
+        name  = "QUARKUS_HTTP_PORT"
+        value = "8080"
+      }
+
+      env {
+        name  = "POLARIS_PERSISTENCE_TYPE"
+        value = "relational-jdbc"
+      }
+
+      env {
+        name  = "QUARKUS_DATASOURCE_JDBC_URL"
+        value = "jdbc:postgresql://127.0.0.1:5432/${google_sql_database.polaris.name}"
+      }
+
+      env {
+        name  = "QUARKUS_DATASOURCE_USERNAME"
+        value = google_sql_user.polaris.name
+      }
+
+      env {
+        name  = "QUARKUS_DATASOURCE_PASSWORD"
+        value = var.polaris_database_password
+      }
+
+      env {
+        name  = "POLARIS_REALM_CONTEXT_REALMS"
+        value = var.polaris_realm
+      }
+
+      env {
+        name  = "QUARKUS_OTEL_SDK_DISABLED"
+        value = "true"
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "1Gi"
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_iam_member.polaris_cloud_sql_client,
+    google_service_account_iam_member.polaris_self_token_creator,
+    google_storage_bucket_iam_member.polaris_warehouse_object_admin,
+    google_sql_database.polaris,
+    google_sql_user.polaris,
+  ]
+}
+
+resource "google_cloud_run_v2_job" "polaris_bootstrap" {
+  project  = var.project_id
+  name     = "lakehouse-polaris-bootstrap"
+  location = var.region
+
+  deletion_protection = false
+  launch_stage        = "BETA"
+
+  template {
+    task_count  = 1
+    parallelism = 1
+
+    template {
+      service_account = google_service_account.polaris.email
+      max_retries     = 0
+      timeout         = "600s"
+
+      containers {
+        name  = "cloud-sql-proxy"
+        image = var.cloud_sql_proxy_image
+
+        args = [
+          "--address=0.0.0.0",
+          "--port=5432",
+          google_sql_database_instance.polaris.connection_name,
+        ]
+
+        startup_probe {
+          initial_delay_seconds = 1
+          timeout_seconds       = 1
+          period_seconds        = 1
+          failure_threshold     = 30
+
+          tcp_socket {
+            port = 5432
+          }
+        }
+
+        resources {
+          limits = {
+            cpu    = "0.25"
+            memory = "256Mi"
+          }
+        }
+      }
+
+      containers {
+        name       = "polaris-bootstrap"
+        image      = var.polaris_admin_image
+        depends_on = ["cloud-sql-proxy"]
+
+        args = [
+          "bootstrap",
+          "-r",
+          var.polaris_realm,
+          "-c",
+          "${var.polaris_realm},${var.polaris_root_client_id},${var.polaris_root_client_secret}",
+        ]
+
+        env {
+          name  = "POLARIS_PERSISTENCE_TYPE"
+          value = "relational-jdbc"
+        }
+
+        env {
+          name  = "QUARKUS_DATASOURCE_JDBC_URL"
+          value = "jdbc:postgresql://127.0.0.1:5432/${google_sql_database.polaris.name}"
+        }
+
+        env {
+          name  = "QUARKUS_DATASOURCE_USERNAME"
+          value = google_sql_user.polaris.name
+        }
+
+        env {
+          name  = "QUARKUS_DATASOURCE_PASSWORD"
+          value = var.polaris_database_password
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "1Gi"
+          }
+        }
+      }
+    }
+  }
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "polaris-bootstrap"
+  }
+
+  depends_on = [
+    google_project_iam_member.polaris_cloud_sql_client,
+    google_sql_database.polaris,
+    google_sql_user.polaris,
   ]
 }

@@ -37,3 +37,18 @@ output "workflow_service_account" {
   description = "Runtime service account used by Workflows."
   value       = google_service_account.workflow.email
 }
+
+output "polaris_database_instance" {
+  description = "Cloud SQL instance that stores Polaris state."
+  value       = google_sql_database_instance.polaris.name
+}
+
+output "polaris_service_url" {
+  description = "URL of the Polaris Cloud Run service."
+  value       = google_cloud_run_v2_service.polaris.uri
+}
+
+output "polaris_bootstrap_job_name" {
+  description = "Cloud Run Job that initializes the Polaris schema and realm."
+  value       = google_cloud_run_v2_job.polaris_bootstrap.name
+}
