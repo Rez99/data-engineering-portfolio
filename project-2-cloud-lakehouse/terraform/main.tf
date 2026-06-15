@@ -1,9 +1,12 @@
 locals {
   required_services = toset([
     "artifactregistry.googleapis.com",
+    "compute.googleapis.com",
+    "dataproc.googleapis.com",
     "iamcredentials.googleapis.com",
     "sqladmin.googleapis.com",
     "run.googleapis.com",
+    "secretmanager.googleapis.com",
     "serviceusage.googleapis.com",
     "storage.googleapis.com",
     "workflows.googleapis.com",
@@ -160,6 +163,12 @@ resource "google_project_iam_member" "workflow_run_viewer" {
   member  = "serviceAccount:${google_service_account.workflow.email}"
 }
 
+resource "google_project_iam_member" "workflow_dataproc_editor" {
+  project = var.project_id
+  role    = "roles/dataproc.editor"
+  member  = "serviceAccount:${google_service_account.workflow.email}"
+}
+
 resource "google_project_service_identity" "workflows" {
   provider = google-beta
 
@@ -261,6 +270,115 @@ resource "google_service_account_iam_member" "polaris_self_token_creator" {
   service_account_id = google_service_account.polaris.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.polaris.email}"
+}
+
+resource "google_service_account" "spark" {
+  project      = var.project_id
+  account_id   = "lakehouse-spark"
+  display_name = "Lakehouse Spark cluster"
+  description  = "Runtime identity for temporary Dataproc clusters."
+}
+
+resource "google_project_iam_member" "spark_dataproc_worker" {
+  project = var.project_id
+  role    = "roles/dataproc.worker"
+  member  = "serviceAccount:${google_service_account.spark.email}"
+}
+
+resource "google_storage_bucket_iam_member" "spark_bucket_object_admin" {
+  bucket = google_storage_bucket.validation.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.spark.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "spark_polaris_invoker" {
+  project  = google_cloud_run_v2_service.polaris.project
+  location = google_cloud_run_v2_service.polaris.location
+  name     = google_cloud_run_v2_service.polaris.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.spark.email}"
+}
+
+resource "google_project_iam_member" "dataproc_operator" {
+  project = var.project_id
+  role    = "roles/dataproc.editor"
+  member  = var.dataproc_operator_member
+}
+
+resource "google_service_account_iam_member" "dataproc_operator_spark_user" {
+  service_account_id = google_service_account.spark.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = var.dataproc_operator_member
+}
+
+resource "google_service_account_iam_member" "workflow_spark_user" {
+  service_account_id = google_service_account.spark.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.workflow.email}"
+}
+
+resource "google_secret_manager_secret" "polaris_root_client_secret" {
+  project   = var.project_id
+  secret_id = "polaris-root-client-secret"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_version" "polaris_root_client_secret" {
+  secret      = google_secret_manager_secret.polaris_root_client_secret.id
+  secret_data = var.polaris_root_client_secret
+}
+
+resource "google_secret_manager_secret_iam_member" "spark_polaris_secret_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.polaris_root_client_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.spark.email}"
+}
+
+resource "google_storage_bucket_object" "load_events" {
+  name   = "spark/load_events.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../services/spark/load_events.py"
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_workflows_workflow" "load" {
+  project             = var.project_id
+  name                = "lakehouse-load"
+  region              = var.region
+  description         = "Creates temporary Spark compute and loads raw events into Iceberg."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/load.yaml", {
+    project_id            = var.project_id
+    region                = var.region
+    cluster_name          = "lakehouse-spark-load"
+    spark_service_account = google_service_account.spark.email
+    staging_bucket        = google_storage_bucket.validation.name
+    load_script_uri       = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
+    raw_csv_uri           = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-10000.csv.gz"
+    polaris_url           = google_cloud_run_v2_service.polaris.uri
+    polaris_secret        = google_secret_manager_secret.polaris_root_client_secret.id
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "load"
+  }
+
+  depends_on = [
+    google_project_iam_member.workflow_dataproc_editor,
+    google_service_account_iam_member.workflow_spark_user,
+    google_storage_bucket_object.load_events,
+  ]
 }
 
 resource "google_cloud_run_v2_service" "polaris" {

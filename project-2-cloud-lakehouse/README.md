@@ -77,6 +77,9 @@ docker exec -it lakehouse-terraform /bin/sh
 ```bash
 terraform init
 terraform apply
+terraform apply \
+  -var="polaris_database_password=$(sed -n 's/^POLARIS_DATABASE_PASSWORD=//p' /workspace/.credentials/setup.env)" \
+  -var="polaris_root_client_secret=$(sed -n 's/^POLARIS_ROOT_CLIENT_SECRET=//p' /workspace/.credentials/setup.env)"
 ```
 
 4. Exit the Terraform container and authenticate Docker with Artifact Registry:

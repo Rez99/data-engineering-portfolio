@@ -52,3 +52,18 @@ output "polaris_bootstrap_job_name" {
   description = "Cloud Run Job that initializes the Polaris schema and realm."
   value       = google_cloud_run_v2_job.polaris_bootstrap.name
 }
+
+output "spark_service_account" {
+  description = "Runtime service account used by temporary Dataproc clusters."
+  value       = google_service_account.spark.email
+}
+
+output "spark_load_script_uri" {
+  description = "GCS URI of the Spark CSV-to-Iceberg load job."
+  value       = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
+}
+
+output "load_workflow_name" {
+  description = "Name of the workflow that runs the temporary Spark load."
+  value       = google_workflows_workflow.load.name
+}

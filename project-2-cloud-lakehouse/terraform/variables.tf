@@ -75,3 +75,9 @@ variable "polaris_root_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "dataproc_operator_member" {
+  description = "IAM member allowed to create Dataproc clusters and attach the Spark service account."
+  type        = string
+  default     = "user:rezwan.islam99@gmail.com"
+}
