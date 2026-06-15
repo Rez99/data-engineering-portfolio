@@ -1,0 +1,32 @@
+name: "lakehouse"
+version: "2.0.0"
+config-version: 2
+
+profile: "lakehouse"
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  lakehouse:
+    staging:
+      +schema: bronze
+      +materialized: view
+
+    intermediate:
+      +schema: silver
+      +materialized: table
+      +file_format: iceberg
+
+    mart:
+      +schema: gold
+      +materialized: table
+      +file_format: iceberg
+
+    smoke:
+      +schema: bronze
+      +materialized: view

@@ -78,7 +78,7 @@ flowchart TB
     Transform --> Outputs
 ```
 
-Operational details such as Polaris persistence, the Spark Thrift endpoint, and cluster teardown are documented in the sections below.
+Operational details such as Polaris persistence, dbt-to-Spark integration, and cluster teardown are documented in the sections below.
 
 ## Selected Orchestration
 
@@ -130,16 +130,20 @@ BigQuery may still receive small reporting tables for visualization, but it will
 
 Project 2 will retain dbt Core and adapt the existing project to `dbt-spark`.
 
-A temporary Managed Spark cluster will be configured through an initialization action to expose a private Spark Thrift endpoint for the duration of the pipeline. A Cloud Run Job containing dbt Core will connect to that endpoint over the project network and execute the staging, intermediate, and mart models.
+M3 will select the simplest viable execution model that allows dbt Core to run
+against temporary Spark compute and access Iceberg tables through Polaris. A
+temporary Spark Thrift endpoint is one candidate, but it is not assumed before
+the integration smoke test.
 
 This preserves:
 
 - The existing SQL models and dependency graph.
-- dbt tests and generated documentation.
 - The staging, intermediate, and mart boundaries.
 - Independent model execution and observability.
 
-The trade-off is additional cluster startup time, network configuration, and cost while the cluster is running. Workflows must delete the cluster after success or failure, and the cluster should also have a scheduled deletion safeguard.
+The selected execution model must prioritize simplicity while retaining dbt.
+Workflows must delete temporary Spark resources after success or failure, and
+the cluster should also have a scheduled deletion safeguard.
 
 ## Implementation Risks
 
@@ -150,7 +154,7 @@ Acceptance of this ADR approves the target architecture; it does not claim that 
 3. **M2:** Polaris can create and access a GCS-backed Iceberg catalog using service-account credentials.
 4. **M2:** A temporary Managed Spark cluster can load Iceberg and connect to Polaris.
 5. **M2:** Spark can create an Iceberg table through Polaris, write rows to Cloud Storage, and read them back.
-6. **M3:** The cluster can expose a private Spark Thrift endpoint that a dbt Core Cloud Run Job can use.
+6. **M3:** A minimal dbt model can query `bronze.events` through Spark and Polaris.
 7. **M2-M3:** Workflows can delete temporary Spark resources after success and failure.
 
 If implementation invalidates an assumption, this ADR will be amended. The principal fallback for the Spark and dbt integration is BigQuery with `dbt-bigquery`; intermediate options include a persistent managed Spark cluster or a supported third-party Spark platform.

@@ -356,6 +356,34 @@ resource "google_storage_bucket_object" "validate_events" {
   depends_on = [google_project_service.required]
 }
 
+data "archive_file" "dbt_project" {
+  type        = "zip"
+  source_dir  = "${path.module}/../dbt"
+  output_path = "${path.module}/dbt-project.zip"
+
+  excludes = [
+    ".user.yml",
+    "logs",
+    "logs/*",
+    "target",
+    "target/*",
+  ]
+}
+
+resource "google_storage_bucket_object" "dbt_project" {
+  name   = "dbt/dbt-project.zip"
+  bucket = google_storage_bucket.validation.name
+  source = data.archive_file.dbt_project.output_path
+}
+
+resource "google_storage_bucket_object" "run_dbt" {
+  name   = "spark/run_dbt.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../services/spark/run_dbt.py"
+
+  depends_on = [google_project_service.required]
+}
+
 resource "google_workflows_workflow" "load" {
   project             = var.project_id
   name                = "lakehouse-load"
@@ -419,6 +447,80 @@ resource "google_workflows_workflow" "validate_load" {
     google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
     google_service_account_iam_member.workflow_spark_user,
     google_storage_bucket_object.validate_events,
+  ]
+}
+
+resource "google_workflows_workflow" "dbt_smoke" {
+  project             = var.project_id
+  name                = "lakehouse-dbt-smoke"
+  region              = var.region
+  description         = "Verifies dbt can query Polaris Iceberg through a temporary Spark cluster."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/dbt_run.yaml", {
+    project_id              = var.project_id
+    region                  = var.region
+    cluster_name            = "lakehouse-spark-dbt-smoke"
+    spark_service_account   = google_service_account.spark.email
+    staging_bucket          = google_storage_bucket.validation.name
+    runner_script_uri       = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
+    dbt_project_archive_uri = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
+    polaris_url             = google_cloud_run_v2_service.polaris.uri
+    polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
+    dbt_selector            = "smoke_polaris"
+    verification_table      = "polaris.bronze.smoke_polaris"
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "dbt-smoke"
+  }
+
+  depends_on = [
+    google_project_iam_member.workflow_dataproc_editor,
+    google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
+    google_service_account_iam_member.workflow_spark_user,
+    google_storage_bucket_object.dbt_project,
+    google_storage_bucket_object.run_dbt,
+  ]
+}
+
+resource "google_workflows_workflow" "transform" {
+  project             = var.project_id
+  name                = "lakehouse-transform"
+  region              = var.region
+  description         = "Builds session-level features with dbt, Spark, and Polaris."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/dbt_run.yaml", {
+    project_id              = var.project_id
+    region                  = var.region
+    cluster_name            = "lakehouse-spark-transform"
+    spark_service_account   = google_service_account.spark.email
+    staging_bucket          = google_storage_bucket.validation.name
+    runner_script_uri       = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
+    dbt_project_archive_uri = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
+    polaris_url             = google_cloud_run_v2_service.polaris.uri
+    polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
+    dbt_selector            = "+features"
+    verification_table      = "polaris.gold.features"
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "transform"
+  }
+
+  depends_on = [
+    google_project_iam_member.workflow_dataproc_editor,
+    google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
+    google_service_account_iam_member.workflow_spark_user,
+    google_storage_bucket_object.dbt_project,
+    google_storage_bucket_object.run_dbt,
   ]
 }
 

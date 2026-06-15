@@ -47,7 +47,7 @@ flowchart TB
 
 1. A Cloud Run ingestion job streams the source file and writes a deterministic 10,000-row sample to Cloud Storage.
 2. Spark converts the source data into Iceberg tables stored in Cloud Storage and registered through Polaris.
-3. dbt Core connects to Spark through a temporary Thrift endpoint and builds staging, intermediate, feature, and reporting models.
+3. dbt Core executes against Spark and builds staging, sessionization, feature, and reporting models.
 4. An XGBoost Cloud Run Job trains and evaluates the conversion model from the session-level feature data.
 5. Model metrics and reporting outputs are exposed to Looker Studio.
 6. Workflows coordinates the stages, while Cloud Scheduler provides optional scheduled execution.
@@ -63,7 +63,7 @@ flowchart TB
 
 - Terraform provisions project services, IAM, storage, database, compute, and orchestration resources.
 - Python application code is packaged into Docker images, pushed to Artifact Registry, and referenced by Cloud Run resources managed through Terraform.
-- Cloud Run Jobs host finite ingestion, dbt, and machine-learning workloads.
+- Cloud Run Jobs host finite ingestion and machine-learning workloads. The dbt runtime is selected during M3 platform integration.
 - A Cloud Run Service hosts the Polaris REST API and can scale to zero when idle.
 - The Spark cluster exists only while lakehouse processing and dbt execution require it.
 - Dockerized Google Cloud CLI and Terraform keep local installation requirements limited to Docker.
@@ -80,4 +80,4 @@ Workflows must delete temporary Spark resources after success or failure. Terraf
 - [ADR-0002: Evaluate Project 1 to GCP Service Mappings](adr/0002-service-mapping.md)
 - [ADR-0003: Select the Project 2 Cloud Architecture](adr/0003-cloud-architecture.md)
 
-The Spark Thrift, dbt, Polaris, and Cloud SQL integrations remain implementation risks to validate in M2-M5. If testing invalidates an assumption, ADR-0003 will be amended rather than extending architecture planning indefinitely.
+The dbt, Spark, Polaris, and Cloud SQL integrations remain implementation risks to validate in M2-M5. If testing invalidates an assumption, ADR-0003 will be amended rather than extending architecture planning indefinitely.

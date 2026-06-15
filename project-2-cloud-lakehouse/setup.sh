@@ -142,4 +142,14 @@ docker run --rm \
   sh -c \
   'pip install --quiet --root-user-action=ignore --disable-pip-version-check --no-cache-dir -r requirements.txt && python configure.py'
 
+printf '🟢 GCloud: Load raw events into bronze Iceberg\n'
+gcloud_cmd workflows run lakehouse-load \
+  --location="${REGION}" \
+  --project="${PROJECT_ID}" >/dev/null 2>&1
+
+printf '🟢 GCloud: Build session-level features\n'
+gcloud_cmd workflows run lakehouse-transform \
+  --location="${REGION}" \
+  --project="${PROJECT_ID}" >/dev/null 2>&1
+
 printf '🟢 Setup complete\n'

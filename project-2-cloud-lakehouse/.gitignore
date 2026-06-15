@@ -6,9 +6,16 @@ terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
 terraform/*.tfplan
+terraform/dbt-project.zip
 
 # Local cloud credentials must never be committed
 .credentials/
 
 # Local validation artifacts
 .validation/
+
+# dbt build artifacts
+dbt/logs/
+dbt/target/
+dbt/dbt_packages/
+dbt/.user.yml

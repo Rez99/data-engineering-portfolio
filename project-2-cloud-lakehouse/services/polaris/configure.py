@@ -3,8 +3,6 @@ from typing import Any
 
 import requests
 from pyiceberg.catalog.rest import RestCatalog
-from pyiceberg.schema import Schema
-from pyiceberg.types import LongType, NestedField, StringType
 
 
 def required_env(name: str) -> str:
@@ -122,7 +120,6 @@ def configure_warehouse() -> None:
     root_client_id = os.getenv("POLARIS_ROOT_CLIENT_ID", "admin")
     catalog_name = os.getenv("POLARIS_CATALOG_NAME", "lakehouse")
     namespace = os.getenv("POLARIS_NAMESPACE", "bronze")
-    table_name = os.getenv("POLARIS_TEST_TABLE", "m2_warehouse_test")
 
     polaris_token = request_polaris_token(
         polaris_url,
@@ -165,21 +162,9 @@ def configure_warehouse() -> None:
         catalog.create_namespace(namespace)
         print(f"Created namespace: {namespace}")
 
-    identifier = (namespace, table_name)
-    if catalog.table_exists(identifier):
-        print(f"Test table already exists: {namespace}.{table_name}")
-    else:
-        schema = Schema(
-            NestedField(1, "id", LongType(), required=True),
-            NestedField(2, "note", StringType(), required=False),
-        )
-        catalog.create_table(identifier, schema=schema)
-        print(f"Created test table: {namespace}.{table_name}")
-
-    catalog.load_table(identifier)
     print(
         "Warehouse configuration verified: "
-        f"{catalog_name}.{namespace}.{table_name}"
+        f"{catalog_name}.{namespace}"
     )
 
 

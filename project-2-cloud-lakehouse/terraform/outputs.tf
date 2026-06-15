@@ -77,3 +77,13 @@ output "validate_load_workflow_name" {
   description = "Name of the workflow that validates the bronze Iceberg table."
   value       = google_workflows_workflow.validate_load.name
 }
+
+output "dbt_smoke_workflow_name" {
+  description = "Name of the workflow that verifies dbt-to-Spark-to-Polaris integration."
+  value       = google_workflows_workflow.dbt_smoke.name
+}
+
+output "transform_workflow_name" {
+  description = "Name of the workflow that builds the session-level feature table."
+  value       = google_workflows_workflow.transform.name
+}
