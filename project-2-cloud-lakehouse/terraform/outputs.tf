@@ -67,3 +67,13 @@ output "load_workflow_name" {
   description = "Name of the workflow that runs the temporary Spark load."
   value       = google_workflows_workflow.load.name
 }
+
+output "spark_validation_script_uri" {
+  description = "GCS URI of the Spark Iceberg validation job."
+  value       = "gs://${google_storage_bucket_object.validate_events.bucket}/${google_storage_bucket_object.validate_events.name}"
+}
+
+output "validate_load_workflow_name" {
+  description = "Name of the workflow that validates the bronze Iceberg table."
+  value       = google_workflows_workflow.validate_load.name
+}

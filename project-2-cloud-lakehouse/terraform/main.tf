@@ -348,6 +348,14 @@ resource "google_storage_bucket_object" "load_events" {
   depends_on = [google_project_service.required]
 }
 
+resource "google_storage_bucket_object" "validate_events" {
+  name   = "spark/validate_events.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../services/spark/validate_events.py"
+
+  depends_on = [google_project_service.required]
+}
+
 resource "google_workflows_workflow" "load" {
   project             = var.project_id
   name                = "lakehouse-load"
@@ -378,6 +386,39 @@ resource "google_workflows_workflow" "load" {
     google_project_iam_member.workflow_dataproc_editor,
     google_service_account_iam_member.workflow_spark_user,
     google_storage_bucket_object.load_events,
+  ]
+}
+
+resource "google_workflows_workflow" "validate_load" {
+  project             = var.project_id
+  name                = "lakehouse-validate-load"
+  region              = var.region
+  description         = "Validates the bronze Iceberg table and removes temporary Spark compute."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/validate_load.yaml", {
+    project_id            = var.project_id
+    region                = var.region
+    cluster_name          = "lakehouse-spark-validate"
+    spark_service_account = google_service_account.spark.email
+    staging_bucket        = google_storage_bucket.validation.name
+    validation_script_uri = "gs://${google_storage_bucket_object.validate_events.bucket}/${google_storage_bucket_object.validate_events.name}"
+    polaris_url           = google_cloud_run_v2_service.polaris.uri
+    polaris_secret        = google_secret_manager_secret.polaris_root_client_secret.id
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "validate-load"
+  }
+
+  depends_on = [
+    google_project_iam_member.workflow_dataproc_editor,
+    google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
+    google_service_account_iam_member.workflow_spark_user,
+    google_storage_bucket_object.validate_events,
   ]
 }
 
