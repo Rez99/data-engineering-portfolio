@@ -90,13 +90,13 @@ than data-flow milestones. ADR-0001 through ADR-0003 are accepted, and
 ### M1: Extract
 
 **Outcome:** Workflows triggers a container that streams the header and first
-10,000 ecommerce clickstream rows from the internet into Cloud Storage.
+1,000,000 ecommerce clickstream rows from the internet into Cloud Storage.
 
 | Mini-milestone | Deliverable | Why it is needed | Status |
 | --- | --- | --- | --- |
 | **M1.1 Storage foundation** | Terraform provisions the private raw GCS bucket. | Extracted data requires a durable landing location. | 🟢 Completed |
 | **M1.2 Extract compute** | Terraform provisions Artifact Registry, IAM, and the ingestion Cloud Run Job. | The extraction code needs a secure image registry, execution environment, and permission to write to GCS. | 🟢 Completed |
-| **M1.3 Extraction logic** | The container streams the header and first 10,000 rows directly into GCS without materializing the full source dataset. | This is the actual Extract operation and its memory-safe sampling behavior. | 🟢 Completed |
+| **M1.3 Extraction logic** | The container streams the header and first 1,000,000 rows directly into GCS without materializing the full source dataset. | This is the actual Extract operation and its memory-safe sampling behavior. | 🟢 Completed |
 | **M1.4 Orchestration** | Workflows invokes and monitors the ingestion Cloud Run Job. | It establishes the orchestration pattern that later pipeline stages will reuse. | 🟢 Completed |
 | **M1.5 Validation** | Verify the object location, schema, and exact row count. | A successful job alone does not prove that the extracted data is correct. | 🟢 Completed |
 
@@ -106,7 +106,7 @@ later data-flow milestone requires them.
 
 M1 was verified by a successful `lakehouse-extract` workflow execution. The
 ingestion job independently reopened the uploaded object and confirmed valid
-gzip-compressed CSV, exactly 10,000 data rows, and the 9 expected columns.
+gzip-compressed CSV, exactly 1,000,000 data rows, and the 9 expected columns.
 After verification, Terraform destroys the milestone environment to avoid idle
 cloud costs; the configuration can recreate it when the next milestone needs
 the shared resources.
@@ -122,7 +122,7 @@ bronze Iceberg table stored in Cloud Storage and registered in Polaris.
 | **M2.2 Configure warehouse** | A Polaris catalog backed by the GCS Iceberg warehouse. | A namespace and test table can be created through Polaris. | 🟢 Completed |
 | **M2.3 Enable Spark** | Dataproc API, Spark service account, and required IAM. | A minimal temporary Spark cluster can connect to Polaris. | 🟢 Completed |
 | **M2.4 Run the load** | Workflow creates Dataproc, loads CSV into Iceberg through Polaris, and deletes the cluster. | The load completes and the temporary cluster is removed. | 🟢 Completed |
-| **M2.5 Validate** | Catalog, schema, row-count, and GCS-file checks. | Polaris reports the table with 10,000 rows and the expected Iceberg files exist in GCS. | 🟢 Completed |
+| **M2.5 Validate** | Catalog, schema, row-count, and GCS-file checks. | Polaris reports the table with 1,000,000 rows and the expected Iceberg files exist in GCS. | 🟢 Completed |
 
 ### M3: Transform
 

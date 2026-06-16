@@ -111,12 +111,12 @@ resource "google_cloud_run_v2_job" "ingestion" {
 
         env {
           name  = "DESTINATION_OBJECT"
-          value = "raw/2019-Oct-10000.csv.gz"
+          value = "raw/2019-Oct-1000000.csv.gz"
         }
 
         env {
           name  = "MAX_ROWS"
-          value = "10000"
+          value = "1000000"
         }
 
         resources {
@@ -337,7 +337,7 @@ resource "google_workflows_workflow" "pipeline" {
     load_script_uri             = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
     runner_script_uri           = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
     dbt_project_archive_uri     = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
-    raw_csv_uri                 = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-10000.csv.gz"
+    raw_csv_uri                 = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
     polaris_url                 = google_cloud_run_v2_service.polaris.uri
     polaris_secret              = google_secret_manager_secret.polaris_root_client_secret.id
     feature_export_uri          = "gs://${google_storage_bucket.validation.name}/ml/features/"
@@ -814,7 +814,7 @@ resource "google_workflows_workflow" "load" {
     spark_service_account = google_service_account.spark.email
     staging_bucket        = google_storage_bucket.validation.name
     load_script_uri       = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
-    raw_csv_uri           = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-10000.csv.gz"
+    raw_csv_uri           = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
     polaris_url           = google_cloud_run_v2_service.polaris.uri
     polaris_secret        = google_secret_manager_secret.polaris_root_client_secret.id
   })

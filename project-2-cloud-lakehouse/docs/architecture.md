@@ -45,7 +45,7 @@ flowchart TB
 
 ## Data Flow
 
-1. A Cloud Run ingestion job streams the source file and writes a deterministic 10,000-row sample to Cloud Storage.
+1. A Cloud Run ingestion job streams the source file and writes a deterministic 1,000,000-row sample to Cloud Storage.
 2. Spark converts the source data into Iceberg tables stored in Cloud Storage and registered through Polaris.
 3. dbt Core executes against Spark and builds staging, sessionization, feature, and reporting models.
 4. An XGBoost Cloud Run Job trains and evaluates the conversion model from the session-level feature data.

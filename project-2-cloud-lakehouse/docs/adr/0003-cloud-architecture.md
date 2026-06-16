@@ -37,14 +37,14 @@ These selections define the target architecture. Their implementation assumption
 | --- | --- |
 | GCP project | `rez-cloud-lakehouse` |
 | Region | `us-central1` |
-| Demonstration dataset | The header and first 10,000 data rows from the public [REES46 October 2019 ecommerce clickstream](https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz) |
+| Demonstration dataset | The header and first 1,000,000 data rows from the public [REES46 October 2019 ecommerce clickstream](https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz) |
 | Machine learning | XGBoost training and evaluation in a Cloud Run Job |
 | Visualization | Looker Studio |
 | Local tooling | Dockerized Google Cloud CLI and Terraform; neither tool is installed locally |
 | Monthly budget | An initial USD 25 budget with alerts at 50%, 80%, and 100% |
 | Teardown | Delete temporary Spark resources after every workflow run and use Terraform to destroy persistent demonstration infrastructure |
 
-The extractor will stream the compressed source and stop after the header and first 10,000 data rows. It will not download or materialize the complete dataset locally. This deterministic sample keeps runs fast and inexpensive while preserving the same ingestion, Iceberg, dbt, machine-learning, and visualization stages as the complete pipeline.
+The extractor will stream the compressed source and stop after the header and first 1,000,000 data rows. It will not download or materialize the complete dataset locally. This deterministic sample mirrors Project 1 while preserving the same ingestion, Iceberg, dbt, machine-learning, and visualization stages as the complete pipeline.
 
 Budget alerts provide notification rather than a hard spending cap. Cost control therefore also depends on zero minimum Cloud Run instances, bounded job timeouts, automatic Spark-cluster deletion on success and failure, a maximum cluster lifetime, and documented `terraform destroy` instructions.
 
@@ -165,7 +165,7 @@ The architecture favors services with usage-based billing and little idle cost.
 
 | Cost behavior | Services | Control |
 | --- | --- | --- |
-| Persistent while provisioned | Cloud SQL; stored Cloud Storage data | Use the smallest development database, keep the 10,000-row dataset small, and destroy demonstration infrastructure when it is not needed. |
+| Persistent while provisioned | Cloud SQL; stored Cloud Storage data | Use the smallest development database, keep the bounded sample dataset small enough for development, and destroy demonstration infrastructure when it is not needed. |
 | Billed while jobs or requests run | Cloud Run Jobs, Cloud Run Service, Workflows | Set zero minimum Cloud Run instances, bounded timeouts, retry limits, and small CPU and memory allocations. |
 | Potentially highest cost per run | Temporary Managed Spark cluster | Use minimum viable nodes, scheduled deletion, and workflow cleanup on success and failure. |
 | No separate infrastructure charge | Terraform, dbt Core, Apache Iceberg, Apache Polaris, XGBoost | Underlying compute, database, network, and storage usage still incur GCP charges. |
