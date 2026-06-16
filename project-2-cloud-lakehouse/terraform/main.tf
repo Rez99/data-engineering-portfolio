@@ -142,11 +142,94 @@ resource "google_cloud_run_v2_job" "ingestion" {
   ]
 }
 
+resource "google_service_account" "ml" {
+  project      = var.project_id
+  account_id   = "lakehouse-ml"
+  display_name = "Lakehouse machine-learning job"
+  description  = "Runtime identity for XGBoost training and artifact storage."
+}
+
+resource "google_storage_bucket_iam_member" "ml_object_admin" {
+  bucket = google_storage_bucket.validation.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.ml.email}"
+}
+
+resource "google_cloud_run_v2_job" "ml" {
+  project  = var.project_id
+  name     = "lakehouse-ml"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+
+    template {
+      service_account = google_service_account.ml.email
+      max_retries     = 0
+      timeout         = "1800s"
+
+      containers {
+        image = var.ml_image
+
+        env {
+          name  = "FEATURE_BUCKET"
+          value = google_storage_bucket.validation.name
+        }
+
+        env {
+          name  = "FEATURE_PREFIX"
+          value = "ml/features/"
+        }
+
+        env {
+          name  = "ARTIFACT_BUCKET"
+          value = google_storage_bucket.validation.name
+        }
+
+        env {
+          name  = "ARTIFACT_PREFIX"
+          value = "ml/xgboost_conversion"
+        }
+
+        resources {
+          limits = {
+            cpu    = "2"
+            memory = "2Gi"
+          }
+        }
+      }
+    }
+  }
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "train"
+  }
+
+  depends_on = [
+    google_artifact_registry_repository.pipeline,
+    google_project_service.required,
+    google_storage_bucket_iam_member.ml_object_admin,
+  ]
+}
+
 resource "google_service_account" "workflow" {
   project      = var.project_id
   account_id   = "lakehouse-workflow"
   display_name = "Lakehouse extraction workflow"
   description  = "Runtime identity used by Workflows to execute pipeline jobs."
+}
+
+resource "google_cloud_run_v2_job_iam_member" "workflow_ml_invoker" {
+  project  = google_cloud_run_v2_job.ml.project
+  location = google_cloud_run_v2_job.ml.location
+  name     = google_cloud_run_v2_job.ml.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
 resource "google_cloud_run_v2_job_iam_member" "workflow_ingestion_invoker" {
@@ -206,6 +289,34 @@ resource "google_workflows_workflow" "extract" {
   ]
 }
 
+resource "google_workflows_workflow" "train" {
+  project             = var.project_id
+  name                = "lakehouse-train"
+  region              = var.region
+  description         = "Runs and monitors XGBoost training and evaluation."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/cloud_run_job.yaml", {
+    project_id = var.project_id
+    region     = var.region
+    job_name   = google_cloud_run_v2_job.ml.name
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "train"
+  }
+
+  depends_on = [
+    google_cloud_run_v2_job_iam_member.workflow_ml_invoker,
+    google_project_service_identity.workflows,
+    google_project_iam_member.workflow_run_viewer,
+    google_project_service.required,
+  ]
+}
+
 resource "google_sql_database_instance" "polaris" {
   project          = var.project_id
   name             = "lakehouse-polaris"
@@ -245,6 +356,262 @@ resource "google_sql_user" "polaris" {
   instance        = google_sql_database_instance.polaris.name
   password        = var.polaris_database_password
   deletion_policy = "ABANDON"
+}
+
+resource "google_sql_database" "superset" {
+  project  = var.project_id
+  name     = "superset"
+  instance = google_sql_database_instance.polaris.name
+}
+
+resource "google_sql_user" "superset" {
+  project         = var.project_id
+  name            = "superset"
+  instance        = google_sql_database_instance.polaris.name
+  password        = var.superset_database_password
+  deletion_policy = "ABANDON"
+}
+
+resource "google_service_account" "superset" {
+  project      = var.project_id
+  account_id   = "lakehouse-superset"
+  display_name = "Lakehouse Superset service"
+  description  = "Runtime identity for the Superset service and bootstrap job."
+}
+
+resource "google_project_iam_member" "superset_cloud_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.superset.email}"
+}
+
+resource "google_storage_bucket_iam_member" "superset_metrics_viewer" {
+  bucket = google_storage_bucket.validation.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.superset.email}"
+}
+
+resource "google_cloud_run_v2_job" "superset_bootstrap" {
+  project  = var.project_id
+  name     = "lakehouse-superset-bootstrap"
+  location = var.region
+
+  deletion_protection = false
+  launch_stage        = "BETA"
+
+  template {
+    task_count  = 1
+    parallelism = 1
+
+    template {
+      service_account = google_service_account.superset.email
+      max_retries     = 0
+      timeout         = "900s"
+
+      containers {
+        name  = "cloud-sql-proxy"
+        image = var.cloud_sql_proxy_image
+
+        args = [
+          "--address=0.0.0.0",
+          "--port=5432",
+          google_sql_database_instance.polaris.connection_name,
+        ]
+
+        startup_probe {
+          initial_delay_seconds = 1
+          timeout_seconds       = 1
+          period_seconds        = 1
+          failure_threshold     = 30
+
+          tcp_socket {
+            port = 5432
+          }
+        }
+
+        resources {
+          limits = {
+            cpu    = "0.25"
+            memory = "256Mi"
+          }
+        }
+      }
+
+      containers {
+        name       = "superset-bootstrap"
+        image      = var.superset_image
+        depends_on = ["cloud-sql-proxy"]
+
+        command = ["/bin/bash", "-c"]
+        args = [<<-EOT
+          set -e
+          python /app/pythonpath/init_metrics.py
+          superset db upgrade
+          if ! superset fab list-users | grep -q "${var.superset_admin_username}"; then
+            superset fab create-admin \
+              --username "${var.superset_admin_username}" \
+              --firstname "Superset" \
+              --lastname "Admin" \
+              --email "admin@example.com" \
+              --password "${var.superset_admin_password}"
+          fi
+          superset fab reset-password \
+            --username "${var.superset_admin_username}" \
+            --password "${var.superset_admin_password}"
+          superset init
+          superset import-directory /app/pythonpath/assets --overwrite
+        EOT
+        ]
+
+        env {
+          name  = "SUPERSET_DATABASE_URI"
+          value = "postgresql+psycopg2://superset:${var.superset_database_password}@127.0.0.1:5432/superset"
+        }
+
+        env {
+          name  = "SUPERSET_SECRET_KEY"
+          value = var.superset_secret_key
+        }
+
+        env {
+          name  = "METRICS_BUCKET"
+          value = google_storage_bucket.validation.name
+        }
+
+        env {
+          name  = "METRICS_PREFIX"
+          value = "ml/xgboost_conversion/metrics"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "1Gi"
+          }
+        }
+      }
+    }
+  }
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "superset-bootstrap"
+  }
+
+  depends_on = [
+    google_artifact_registry_repository.pipeline,
+    google_project_iam_member.superset_cloud_sql_client,
+    google_storage_bucket_iam_member.superset_metrics_viewer,
+    google_sql_database.superset,
+    google_sql_user.superset,
+  ]
+}
+
+resource "google_cloud_run_v2_service" "superset" {
+  project  = var.project_id
+  name     = "lakehouse-superset"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  deletion_protection = false
+
+  template {
+    service_account = google_service_account.superset.email
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 1
+    }
+
+    containers {
+      name  = "cloud-sql-proxy"
+      image = var.cloud_sql_proxy_image
+
+      args = [
+        "--address=0.0.0.0",
+        "--port=5432",
+        google_sql_database_instance.polaris.connection_name,
+      ]
+
+      startup_probe {
+        initial_delay_seconds = 1
+        timeout_seconds       = 1
+        period_seconds        = 1
+        failure_threshold     = 30
+
+        tcp_socket {
+          port = 5432
+        }
+      }
+
+      resources {
+        limits = {
+          cpu    = "0.25"
+          memory = "256Mi"
+        }
+      }
+    }
+
+    containers {
+      name       = "superset"
+      image      = var.superset_image
+      depends_on = ["cloud-sql-proxy"]
+
+      ports {
+        container_port = 8080
+      }
+
+      env {
+        name  = "SUPERSET_DATABASE_URI"
+        value = "postgresql+psycopg2://superset:${var.superset_database_password}@127.0.0.1:5432/superset"
+      }
+
+      env {
+        name  = "SUPERSET_SECRET_KEY"
+        value = var.superset_secret_key
+      }
+
+      env {
+        name  = "METRICS_BUCKET"
+        value = google_storage_bucket.validation.name
+      }
+
+      env {
+        name  = "METRICS_PREFIX"
+        value = "ml/xgboost_conversion/metrics"
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "2Gi"
+        }
+      }
+    }
+  }
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "consume"
+  }
+
+  depends_on = [
+    google_artifact_registry_repository.pipeline,
+    google_project_iam_member.superset_cloud_sql_client,
+    google_storage_bucket_iam_member.superset_metrics_viewer,
+    google_sql_database.superset,
+    google_sql_user.superset,
+  ]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "superset_public" {
+  project  = google_cloud_run_v2_service.superset.project
+  location = google_cloud_run_v2_service.superset.location
+  name     = google_cloud_run_v2_service.superset.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }
 
 resource "google_service_account" "polaris" {
@@ -348,14 +715,6 @@ resource "google_storage_bucket_object" "load_events" {
   depends_on = [google_project_service.required]
 }
 
-resource "google_storage_bucket_object" "validate_events" {
-  name   = "spark/validate_events.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../services/spark/validate_events.py"
-
-  depends_on = [google_project_service.required]
-}
-
 data "archive_file" "dbt_project" {
   type        = "zip"
   source_dir  = "${path.module}/../dbt"
@@ -417,39 +776,6 @@ resource "google_workflows_workflow" "load" {
   ]
 }
 
-resource "google_workflows_workflow" "validate_load" {
-  project             = var.project_id
-  name                = "lakehouse-validate-load"
-  region              = var.region
-  description         = "Validates the bronze Iceberg table and removes temporary Spark compute."
-  service_account     = google_service_account.workflow.id
-  deletion_protection = false
-
-  source_contents = templatefile("${path.module}/../workflows/validate_load.yaml", {
-    project_id            = var.project_id
-    region                = var.region
-    cluster_name          = "lakehouse-spark-validate"
-    spark_service_account = google_service_account.spark.email
-    staging_bucket        = google_storage_bucket.validation.name
-    validation_script_uri = "gs://${google_storage_bucket_object.validate_events.bucket}/${google_storage_bucket_object.validate_events.name}"
-    polaris_url           = google_cloud_run_v2_service.polaris.uri
-    polaris_secret        = google_secret_manager_secret.polaris_root_client_secret.id
-  })
-
-  labels = {
-    environment = "demo"
-    project     = "cloud-lakehouse"
-    stage       = "validate-load"
-  }
-
-  depends_on = [
-    google_project_iam_member.workflow_dataproc_editor,
-    google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
-    google_service_account_iam_member.workflow_spark_user,
-    google_storage_bucket_object.validate_events,
-  ]
-}
-
 resource "google_workflows_workflow" "dbt_smoke" {
   project             = var.project_id
   name                = "lakehouse-dbt-smoke"
@@ -470,6 +796,7 @@ resource "google_workflows_workflow" "dbt_smoke" {
     polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
     dbt_selector            = "smoke_polaris"
     verification_table      = "polaris.bronze.smoke_polaris"
+    export_parquet          = ""
   })
 
   labels = {
@@ -507,6 +834,7 @@ resource "google_workflows_workflow" "transform" {
     polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
     dbt_selector            = "+features"
     verification_table      = "polaris.gold.features"
+    export_parquet          = "gs://${google_storage_bucket.validation.name}/ml/features/"
   })
 
   labels = {

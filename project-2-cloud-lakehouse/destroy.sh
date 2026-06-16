@@ -24,8 +24,13 @@ set -a
 source "${SETUP_ENV}"
 set +a
 
+SUPERSET_ADMIN_PASSWORD="admin"
+
 export TF_VAR_polaris_database_password="${POLARIS_DATABASE_PASSWORD}"
 export TF_VAR_polaris_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET}"
+export TF_VAR_superset_database_password="${SUPERSET_DATABASE_PASSWORD}"
+export TF_VAR_superset_secret_key="${SUPERSET_SECRET_KEY}"
+export TF_VAR_superset_admin_password="${SUPERSET_ADMIN_PASSWORD}"
 
 cleanup() {
   docker rm --force "${TERRAFORM_CONTAINER}" >/dev/null 2>&1 || true
@@ -42,6 +47,9 @@ docker run --detach \
   --env GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
   --env TF_VAR_polaris_database_password \
   --env TF_VAR_polaris_root_client_secret \
+  --env TF_VAR_superset_database_password \
+  --env TF_VAR_superset_secret_key \
+  --env TF_VAR_superset_admin_password \
   --workdir /workspace/terraform \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null

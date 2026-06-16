@@ -84,6 +84,7 @@ main:
                           - --polaris-secret=${polaris_secret}
                           - --selector=${dbt_selector}
                           - --verify-table=${verification_table}
+                          - --export-parquet=${export_parquet}
                 result: dbt_job
             - wait_for_job:
                 call: http.get

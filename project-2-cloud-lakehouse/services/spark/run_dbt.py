@@ -19,6 +19,14 @@ METADATA_URL = (
     "service-accounts/default"
 )
 DBT_PACKAGE = "dbt-spark==1.10.1"
+FEATURE_COLUMNS = [
+    "brand",
+    "category_code",
+    "day_of_week",
+    "hour_of_day",
+    "view_count",
+    "cart_add_count",
+]
 
 
 def metadata_request(path: str) -> str:
@@ -149,6 +157,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--polaris-secret", required=True)
     parser.add_argument("--selector", required=True)
     parser.add_argument("--verify-table", required=True)
+    parser.add_argument("--export-parquet")
     return parser.parse_args()
 
 
@@ -200,9 +209,20 @@ def main() -> None:
                 f"dbt run failed for selector: {args.selector}"
             )
 
-        row_count = SparkSession.builder.getOrCreate().table(
+        verified_table = SparkSession.builder.getOrCreate().table(
             args.verify_table
-        ).count()
+        )
+        row_count = verified_table.count()
+        if args.export_parquet:
+            (
+                verified_table.select(
+                    *FEATURE_COLUMNS,
+                    "converted",
+                )
+                .write.mode("overwrite")
+                .parquet(args.export_parquet)
+            )
+            print(f"Exported features: {args.export_parquet}")
 
     print(
         f"dbt run verified: {args.verify_table}, rows={row_count:,}"

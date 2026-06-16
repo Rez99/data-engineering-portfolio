@@ -80,8 +80,8 @@ is introduced only when the current data stage requires it.
 | **M1. Extract** | Public ecommerce clickstream → raw Cloud Storage | 🟢 Completed |
 | **M2. Load** | Raw CSV → bronze Iceberg table registered in Polaris | 🟢 Completed |
 | **M3. Transform** | Bronze events → queryable session-level feature data | 🟢 Completed |
-| **M4. Train** | Session features → XGBoost model, metrics, and evaluation artifacts | 🔴 Not started |
-| **M5. Consume** | Reporting outputs → model-performance dashboard | 🔴 Not started |
+| **M4. Train** | Session features → XGBoost model, metrics, and evaluation artifacts | 🟢 Completed |
+| **M5. Consume** | Reporting outputs → model-performance dashboard | 🟢 Completed |
 
 Architecture selection and repository setup are completed prerequisites rather
 than data-flow milestones. ADR-0001 through ADR-0003 are accepted, and
@@ -134,6 +134,28 @@ that are ready for machine-learning ingestion.
 | **M3.1 Migrate dbt code** | Port the Project 1 dbt models, sources, profiles, and SQL dialect from DuckDB to Spark. | `dbt parse` succeeds. | 🟢 Completed |
 | **M3.2 Integrate platform** | Connect dbt, Spark, and Polaris into a working execution stack. | A minimal dbt model successfully queries `bronze.events` through Spark and Polaris. | 🟢 Completed |
 | **M3.3 Run transformations** | Execute the sessionization and feature models through the orchestration workflow. | The `gold.features` Iceberg table is built successfully and can be queried. | 🟢 Completed |
+
+### M4: Train
+
+**Outcome:** XGBoost trains on the session-level feature data and writes a
+portable model plus evaluation artifacts for downstream reporting.
+
+| Mini-milestone | Deliverable | Acceptance criterion | Status |
+| --- | --- | --- | --- |
+| **M4.1 Migrate training code** | Port the Project 1 external-memory XGBoost training and evaluation logic into a standalone ML service. | Targeted local tests train and evaluate from synthetic Parquet input and produce the expected artifacts. | 🟢 Completed |
+| **M4.2 Integrate training platform** | Connect the feature output in GCS to an XGBoost Cloud Run Job and configure artifact storage. | The Cloud Run Job can read the feature dataset and write a test artifact to GCS. | 🟢 Completed |
+| **M4.3 Run training workflow** | Orchestrate the production training and evaluation job after transformation. | The workflow succeeds and GCS contains a non-empty model, metrics, baseline comparison, confusion matrix, feature importance, and ROC curve. | 🟢 Completed |
+
+### M5: Consume
+
+**Outcome:** Apache Superset presents the model evaluation artifacts as the
+existing Project 1 dashboard in a cloud-hosted consumption layer.
+
+| Mini-milestone | Deliverable | Acceptance criterion | Status |
+| --- | --- | --- | --- |
+| **M5.1 Deploy Superset** | Superset Cloud Run service, bootstrap job, and isolated metadata database on the existing Cloud SQL instance. | Superset is healthy at its Cloud Run URL and accepts the configured administrator login. | 🟢 Completed |
+| **M5.2 Connect metrics** | Queryable Superset datasets backed by the GCS model-evaluation artifacts. | Superset can query all five metric datasets produced by M4. | 🟢 Completed |
+| **M5.3 Import dashboard** | Adapt and import the existing Project 1 Superset YAML assets. | The XGBoost model-evaluation dashboard loads with all charts populated. | 🟢 Completed |
 
 ---
 

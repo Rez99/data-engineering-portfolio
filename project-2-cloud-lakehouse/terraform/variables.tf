@@ -22,6 +22,43 @@ variable "ingestion_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
 }
 
+variable "ml_image" {
+  description = "Container image used by the machine-learning Cloud Run Job."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
+}
+
+variable "superset_image" {
+  description = "Container image used by the Superset Cloud Run service and bootstrap job."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello:latest"
+}
+
+variable "superset_database_password" {
+  description = "PostgreSQL password used by Superset."
+  type        = string
+  sensitive   = true
+}
+
+variable "superset_secret_key" {
+  description = "Secret key used to sign Superset sessions."
+  type        = string
+  sensitive   = true
+}
+
+variable "superset_admin_password" {
+  description = "Password for the initial Superset administrator."
+  type        = string
+  default     = "admin"
+  sensitive   = true
+}
+
+variable "superset_admin_username" {
+  description = "Username for the initial Superset administrator."
+  type        = string
+  default     = "admin"
+}
+
 variable "polaris_image" {
   description = "Apache Polaris image deployed to Cloud Run."
   type        = string

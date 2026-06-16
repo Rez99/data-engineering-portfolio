@@ -28,6 +28,21 @@ output "ingestion_service_account" {
   value       = google_service_account.ingestion.email
 }
 
+output "ml_job_name" {
+  description = "Name of the machine-learning Cloud Run Job."
+  value       = google_cloud_run_v2_job.ml.name
+}
+
+output "ml_service_account" {
+  description = "Runtime service account used by the machine-learning job."
+  value       = google_service_account.ml.email
+}
+
+output "train_workflow_name" {
+  description = "Name of the workflow that runs XGBoost training."
+  value       = google_workflows_workflow.train.name
+}
+
 output "extract_workflow_name" {
   description = "Name of the workflow that runs the extraction job."
   value       = google_workflows_workflow.extract.name
@@ -68,16 +83,6 @@ output "load_workflow_name" {
   value       = google_workflows_workflow.load.name
 }
 
-output "spark_validation_script_uri" {
-  description = "GCS URI of the Spark Iceberg validation job."
-  value       = "gs://${google_storage_bucket_object.validate_events.bucket}/${google_storage_bucket_object.validate_events.name}"
-}
-
-output "validate_load_workflow_name" {
-  description = "Name of the workflow that validates the bronze Iceberg table."
-  value       = google_workflows_workflow.validate_load.name
-}
-
 output "dbt_smoke_workflow_name" {
   description = "Name of the workflow that verifies dbt-to-Spark-to-Polaris integration."
   value       = google_workflows_workflow.dbt_smoke.name
@@ -86,4 +91,14 @@ output "dbt_smoke_workflow_name" {
 output "transform_workflow_name" {
   description = "Name of the workflow that builds the session-level feature table."
   value       = google_workflows_workflow.transform.name
+}
+
+output "superset_service_url" {
+  description = "Public URL of the Superset Cloud Run service."
+  value       = google_cloud_run_v2_service.superset.uri
+}
+
+output "superset_bootstrap_job_name" {
+  description = "Cloud Run Job that initializes Superset metadata and the administrator."
+  value       = google_cloud_run_v2_job.superset_bootstrap.name
 }

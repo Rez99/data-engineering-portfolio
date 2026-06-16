@@ -13,6 +13,8 @@ readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
 readonly INGESTION_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/ingestion:dev-amd64"
+readonly ML_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/ml:dev-amd64"
+readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/superset:dev-amd64"
 readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
 readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
@@ -25,6 +27,14 @@ fi
 
 provided_database_password="${POLARIS_DATABASE_PASSWORD:-}"
 provided_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET:-}"
+provided_superset_database_password="${SUPERSET_DATABASE_PASSWORD:-}"
+provided_superset_secret_key="${SUPERSET_SECRET_KEY:-}"
+
+unset POLARIS_DATABASE_PASSWORD POLARIS_ROOT_CLIENT_SECRET
+unset SUPERSET_DATABASE_PASSWORD SUPERSET_SECRET_KEY SUPERSET_ADMIN_PASSWORD
+
+umask 077
+mkdir -p "$(dirname "${SETUP_ENV}")"
 
 if [[ -f "${SETUP_ENV}" ]]; then
   set -a
@@ -32,23 +42,45 @@ if [[ -f "${SETUP_ENV}" ]]; then
   source "${SETUP_ENV}"
   set +a
 else
-  umask 077
-  mkdir -p "$(dirname "${SETUP_ENV}")"
+  touch "${SETUP_ENV}"
+fi
+
+if [[ -z "${POLARIS_DATABASE_PASSWORD:-}" ]]; then
   POLARIS_DATABASE_PASSWORD="$(openssl rand -hex 24)"
+  printf 'POLARIS_DATABASE_PASSWORD=%s\n' "${POLARIS_DATABASE_PASSWORD}" >>"${SETUP_ENV}"
+fi
+
+if [[ -z "${POLARIS_ROOT_CLIENT_SECRET:-}" ]]; then
   POLARIS_ROOT_CLIENT_SECRET="$(openssl rand -hex 32)"
-  {
-    printf 'POLARIS_DATABASE_PASSWORD=%s\n' "${POLARIS_DATABASE_PASSWORD}"
-    printf 'POLARIS_ROOT_CLIENT_SECRET=%s\n' "${POLARIS_ROOT_CLIENT_SECRET}"
-  } >"${SETUP_ENV}"
+  printf 'POLARIS_ROOT_CLIENT_SECRET=%s\n' "${POLARIS_ROOT_CLIENT_SECRET}" >>"${SETUP_ENV}"
+fi
+
+if [[ -z "${SUPERSET_DATABASE_PASSWORD:-}" ]]; then
+  SUPERSET_DATABASE_PASSWORD="$(openssl rand -hex 24)"
+  printf 'SUPERSET_DATABASE_PASSWORD=%s\n' "${SUPERSET_DATABASE_PASSWORD}" >>"${SETUP_ENV}"
+fi
+
+if [[ -z "${SUPERSET_SECRET_KEY:-}" ]]; then
+  SUPERSET_SECRET_KEY="$(openssl rand -hex 32)"
+  printf 'SUPERSET_SECRET_KEY=%s\n' "${SUPERSET_SECRET_KEY}" >>"${SETUP_ENV}"
 fi
 
 POLARIS_DATABASE_PASSWORD="${provided_database_password:-${POLARIS_DATABASE_PASSWORD}}"
 POLARIS_ROOT_CLIENT_SECRET="${provided_root_client_secret:-${POLARIS_ROOT_CLIENT_SECRET}}"
+SUPERSET_DATABASE_PASSWORD="${provided_superset_database_password:-${SUPERSET_DATABASE_PASSWORD}}"
+SUPERSET_SECRET_KEY="${provided_superset_secret_key:-${SUPERSET_SECRET_KEY}}"
+SUPERSET_ADMIN_PASSWORD="admin"
 
 export POLARIS_DATABASE_PASSWORD
 export POLARIS_ROOT_CLIENT_SECRET
+export SUPERSET_DATABASE_PASSWORD
+export SUPERSET_SECRET_KEY
+export SUPERSET_ADMIN_PASSWORD
 export TF_VAR_polaris_database_password="${POLARIS_DATABASE_PASSWORD}"
 export TF_VAR_polaris_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET}"
+export TF_VAR_superset_database_password="${SUPERSET_DATABASE_PASSWORD}"
+export TF_VAR_superset_secret_key="${SUPERSET_SECRET_KEY}"
+export TF_VAR_superset_admin_password="${SUPERSET_ADMIN_PASSWORD}"
 
 cleanup() {
   docker rm --force "${TERRAFORM_CONTAINER}" >/dev/null 2>&1 || true
@@ -74,6 +106,9 @@ docker run --detach \
   --env GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
   --env TF_VAR_polaris_database_password \
   --env TF_VAR_polaris_root_client_secret \
+  --env TF_VAR_superset_database_password \
+  --env TF_VAR_superset_secret_key \
+  --env TF_VAR_superset_admin_password \
   --workdir /workspace/terraform \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null
@@ -88,7 +123,7 @@ gcloud_cmd run jobs execute "${POLARIS_BOOTSTRAP_JOB}" \
   --project="${PROJECT_ID}" \
   --wait >/dev/null
 
-printf '🟢 Docker: Build and push ingestion image\n'
+printf '🟢 Docker: Build and push application images\n'
 printf '   - GCloud: Request Artifact Registry access token\n'
 access_token="$(gcloud_cmd auth print-access-token)"
 
@@ -108,11 +143,30 @@ docker buildx build \
   --push \
   "${PROJECT_DIR}/services/ingestion" >/dev/null 2>&1
 
-printf '🟢 Terraform: Update Cloud Run Job deployment\n'
+printf '   - Docker: Build and push ML image\n'
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --target runtime \
+  --tag "${ML_IMAGE}" \
+  --push \
+  "${PROJECT_DIR}/services/ml" >/dev/null 2>&1
+
+printf '   - Docker: Build and push Superset image\n'
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --tag "${SUPERSET_IMAGE}" \
+  --push \
+  "${PROJECT_DIR}/services/superset" >/dev/null 2>&1
+
+printf '🟢 Terraform: Update Cloud Run Job deployments\n'
 docker exec "${TERRAFORM_CONTAINER}" terraform apply \
   -input=false \
   -auto-approve \
-  -var="ingestion_image=${INGESTION_IMAGE}"   >/dev/null 2>&1
+  -var="ingestion_image=${INGESTION_IMAGE}" \
+  -var="ml_image=${ML_IMAGE}" \
+  -var="superset_image=${SUPERSET_IMAGE}" >/dev/null 2>&1
 
 printf '🟢 GCloud: Execute extraction workflow\n'
 gcloud_cmd workflows run lakehouse-extract \
@@ -151,5 +205,16 @@ printf '🟢 GCloud: Build session-level features\n'
 gcloud_cmd workflows run lakehouse-transform \
   --location="${REGION}" \
   --project="${PROJECT_ID}" >/dev/null 2>&1
+
+printf '🟢 GCloud: Train and evaluate conversion model\n'
+gcloud_cmd workflows run lakehouse-train \
+  --location="${REGION}" \
+  --project="${PROJECT_ID}" >/dev/null 2>&1
+
+printf '🟢 Superset: Initialize metadata and administrator\n'
+gcloud_cmd run jobs execute lakehouse-superset-bootstrap \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}" \
+  --wait >/dev/null
 
 printf '🟢 Setup complete\n'
