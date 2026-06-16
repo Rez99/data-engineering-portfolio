@@ -13,6 +13,7 @@ terraform/dbt-project.zip
 
 # Local validation artifacts
 .validation/
+logs/
 
 # dbt build artifacts
 dbt/logs/

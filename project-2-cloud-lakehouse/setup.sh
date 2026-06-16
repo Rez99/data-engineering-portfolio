@@ -9,6 +9,9 @@ readonly GCLOUD_IMAGE="gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-s
 readonly GCLOUD_CONFIG="${PROJECT_DIR}/.credentials/gcloud"
 readonly ADC_FILE="${GCLOUD_CONFIG}/application_default_credentials.json"
 readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
+readonly LOG_DIR="${PROJECT_DIR}/logs"
+readonly TERRAFORM_APPLY_1_LOG="${LOG_DIR}/terraform-apply-1-foundation.jsonl"
+readonly TERRAFORM_APPLY_2_LOG="${LOG_DIR}/terraform-apply-2-images.jsonl"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
@@ -35,6 +38,7 @@ unset SUPERSET_DATABASE_PASSWORD SUPERSET_SECRET_KEY SUPERSET_ADMIN_PASSWORD
 
 umask 077
 mkdir -p "$(dirname "${SETUP_ENV}")"
+mkdir -p "${LOG_DIR}"
 
 if [[ -f "${SETUP_ENV}" ]]; then
   set -a
@@ -115,7 +119,10 @@ docker run --detach \
 
 printf '🟢 Terraform: Provision GCP resources\n'
 docker exec "${TERRAFORM_CONTAINER}" terraform init -input=false >/dev/null 2>&1
-docker exec "${TERRAFORM_CONTAINER}" terraform apply -input=false -auto-approve >/dev/null 2>&1
+docker exec "${TERRAFORM_CONTAINER}" terraform apply \
+  -json \
+  -input=false \
+  -auto-approve >"${TERRAFORM_APPLY_1_LOG}" 2>&1
 
 printf '🟢 Polaris: Bootstrap realm and root credentials\n'
 gcloud_cmd run jobs execute "${POLARIS_BOOTSTRAP_JOB}" \
@@ -162,11 +169,12 @@ docker buildx build \
 
 printf '🟢 Terraform: Update Cloud Run Job deployments\n'
 docker exec "${TERRAFORM_CONTAINER}" terraform apply \
+  -json \
   -input=false \
   -auto-approve \
   -var="ingestion_image=${INGESTION_IMAGE}" \
   -var="ml_image=${ML_IMAGE}" \
-  -var="superset_image=${SUPERSET_IMAGE}" >/dev/null 2>&1
+  -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_2_LOG}" 2>&1
 
 printf '🟢 GCloud: Execute extraction workflow\n'
 gcloud_cmd workflows run lakehouse-extract \
