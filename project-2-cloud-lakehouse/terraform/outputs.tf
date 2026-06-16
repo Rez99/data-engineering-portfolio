@@ -93,6 +93,11 @@ output "transform_workflow_name" {
   value       = google_workflows_workflow.transform.name
 }
 
+output "pipeline_workflow_name" {
+  description = "Name of the parent workflow that runs the end-to-end pipeline."
+  value       = google_workflows_workflow.pipeline.name
+}
+
 output "superset_service_url" {
   description = "Public URL of the Superset Cloud Run service."
   value       = google_cloud_run_v2_service.superset.uri

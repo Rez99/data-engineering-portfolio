@@ -317,6 +317,54 @@ resource "google_workflows_workflow" "train" {
   ]
 }
 
+resource "google_workflows_workflow" "pipeline" {
+  project             = var.project_id
+  name                = "lakehouse-pipeline"
+  region              = var.region
+  description         = "Runs the complete lakehouse pipeline with one temporary Spark cluster for load and transform."
+  service_account     = google_service_account.workflow.id
+  deletion_protection = false
+
+  source_contents = templatefile("${path.module}/../workflows/pipeline.yaml", {
+    project_id                  = var.project_id
+    region                      = var.region
+    cluster_name                = "lakehouse-spark-pipeline"
+    ingestion_job_name          = google_cloud_run_v2_job.ingestion.name
+    ml_job_name                 = google_cloud_run_v2_job.ml.name
+    superset_bootstrap_job_name = google_cloud_run_v2_job.superset_bootstrap.name
+    spark_service_account       = google_service_account.spark.email
+    staging_bucket              = google_storage_bucket.validation.name
+    load_script_uri             = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
+    runner_script_uri           = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
+    dbt_project_archive_uri     = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
+    raw_csv_uri                 = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-10000.csv.gz"
+    polaris_url                 = google_cloud_run_v2_service.polaris.uri
+    polaris_secret              = google_secret_manager_secret.polaris_root_client_secret.id
+    feature_export_uri          = "gs://${google_storage_bucket.validation.name}/ml/features/"
+  })
+
+  labels = {
+    environment = "demo"
+    project     = "cloud-lakehouse"
+    stage       = "pipeline"
+  }
+
+  depends_on = [
+    google_cloud_run_v2_job_iam_member.workflow_ingestion_invoker,
+    google_cloud_run_v2_job_iam_member.workflow_ml_invoker,
+    google_cloud_run_v2_job_iam_member.workflow_superset_bootstrap_invoker,
+    google_project_iam_member.workflow_dataproc_editor,
+    google_project_iam_member.workflow_run_viewer,
+    google_project_service.required,
+    google_project_service_identity.workflows,
+    google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
+    google_service_account_iam_member.workflow_spark_user,
+    google_storage_bucket_object.dbt_project,
+    google_storage_bucket_object.load_events,
+    google_storage_bucket_object.run_dbt,
+  ]
+}
+
 resource "google_sql_database_instance" "polaris" {
   project          = var.project_id
   name             = "lakehouse-polaris"
@@ -506,6 +554,14 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
     google_sql_database.superset,
     google_sql_user.superset,
   ]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "workflow_superset_bootstrap_invoker" {
+  project  = google_cloud_run_v2_job.superset_bootstrap.project
+  location = google_cloud_run_v2_job.superset_bootstrap.location
+  name     = google_cloud_run_v2_job.superset_bootstrap.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
 resource "google_cloud_run_v2_service" "superset" {

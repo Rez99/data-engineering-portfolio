@@ -176,11 +176,6 @@ docker exec "${TERRAFORM_CONTAINER}" terraform apply \
   -var="ml_image=${ML_IMAGE}" \
   -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_2_LOG}" 2>&1
 
-printf '🟢 GCloud: Execute extraction workflow\n'
-gcloud_cmd workflows run lakehouse-extract \
-  --location="${REGION}" \
-  --project="${PROJECT_ID}" >/dev/null 2>&1
-
 printf '🟢 Polaris: Configure and verify Iceberg warehouse\n'
 POLARIS_URL="$(
   gcloud_cmd run services describe "${POLARIS_SERVICE}" \
@@ -204,25 +199,9 @@ docker run --rm \
   sh -c \
   'pip install --quiet --root-user-action=ignore --disable-pip-version-check --no-cache-dir -r requirements.txt && python configure.py'
 
-printf '🟢 GCloud: Load raw events into bronze Iceberg\n'
-gcloud_cmd workflows run lakehouse-load \
+printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
+gcloud_cmd workflows run lakehouse-pipeline \
   --location="${REGION}" \
   --project="${PROJECT_ID}" >/dev/null 2>&1
-
-printf '🟢 GCloud: Build session-level features\n'
-gcloud_cmd workflows run lakehouse-transform \
-  --location="${REGION}" \
-  --project="${PROJECT_ID}" >/dev/null 2>&1
-
-printf '🟢 GCloud: Train and evaluate conversion model\n'
-gcloud_cmd workflows run lakehouse-train \
-  --location="${REGION}" \
-  --project="${PROJECT_ID}" >/dev/null 2>&1
-
-printf '🟢 Superset: Initialize metadata and administrator\n'
-gcloud_cmd run jobs execute lakehouse-superset-bootstrap \
-  --region="${REGION}" \
-  --project="${PROJECT_ID}" \
-  --wait >/dev/null
 
 printf '🟢 Setup complete\n'
