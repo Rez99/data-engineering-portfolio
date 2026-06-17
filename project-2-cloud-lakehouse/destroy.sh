@@ -10,7 +10,6 @@ readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
 readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
-readonly SUPERSET_ADMIN_PASSWORD="admin"
 
 if [[ ! -f "${ADC_FILE}" ]]; then
   printf 'Missing Google Cloud credentials: %s\n' "${ADC_FILE}" >&2
@@ -27,6 +26,8 @@ set -a
 # shellcheck source=/dev/null
 source "${SETUP_ENV}"
 set +a
+
+SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-admin}"
 
 export TF_VAR_polaris_database_password="${POLARIS_DATABASE_PASSWORD}"
 export TF_VAR_polaris_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET}"
