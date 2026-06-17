@@ -6,12 +6,7 @@ from pathlib import Path
 
 sys.path.insert(
     0,
-    str(
-        Path(__file__).resolve().parents[2]
-        / "deployment"
-        / "containers"
-        / "ingestion"
-    ),
+    str(Path(__file__).resolve().parents[2] / "deployment" / "spark"),
 )
 
 from extract import EXPECTED_COLUMNS, copy_sample, validate_sample

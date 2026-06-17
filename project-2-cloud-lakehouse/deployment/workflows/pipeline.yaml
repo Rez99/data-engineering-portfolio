@@ -7,12 +7,10 @@ main:
           - cluster: ${cluster_name}
           - dataproc_url: https://dataproc.googleapis.com/v1
           - job_error: null
+          - extract_job_id: null
           - load_job_id: null
           - dbt_job_id: null
-    - run_extract:
-        call: googleapis.run.v2.projects.locations.jobs.run
-        args:
-          name: projects/${project_id}/locations/${region}/jobs/${ingestion_job_name}
+          - train_job_id: null
     - create_cluster:
         call: http.post
         args:
@@ -72,6 +70,49 @@ main:
     - run_spark_jobs:
         try:
           steps:
+            - submit_extract:
+                call: http.post
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs:submit"}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                  body:
+                    job:
+                      placement:
+                        clusterName: $${cluster}
+                      pysparkJob:
+                        mainPythonFileUri: ${extract_script_uri}
+                        args:
+                          - --source-url=${source_url}
+                          - --destination-bucket=${raw_bucket}
+                          - --destination-object=${raw_object}
+                          - --max-rows=${expected_rows}
+                result: extract_job
+            - wait_for_extract:
+                call: http.get
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs/" + extract_job.body.reference.jobId}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                result: extract_status
+            - check_extract:
+                switch:
+                  - condition: $${extract_status.body.status.state == "DONE"}
+                    next: extract_complete
+                  - condition: $${extract_status.body.status.state == "ERROR" or extract_status.body.status.state == "CANCELLED"}
+                    next: extract_failed
+            - wait_before_extract_poll:
+                call: sys.sleep
+                args:
+                  seconds: 15
+                next: wait_for_extract
+            - extract_failed:
+                raise: $${extract_status.body.status.details}
+            - extract_complete:
+                assign:
+                  - extract_job_id: $${extract_status.body.reference.jobId}
             - submit_load:
                 call: http.post
                 args:
@@ -160,6 +201,51 @@ main:
             - dbt_complete:
                 assign:
                   - dbt_job_id: $${dbt_status.body.reference.jobId}
+            - submit_train:
+                call: http.post
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs:submit"}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                  body:
+                    job:
+                      placement:
+                        clusterName: $${cluster}
+                      pysparkJob:
+                        mainPythonFileUri: ${train_script_uri}
+                        pythonFileUris:
+                          - ${train_library_uri}
+                        args:
+                          - --feature-bucket=${raw_bucket}
+                          - --feature-prefix=ml/features/
+                          - --artifact-bucket=${artifact_bucket}
+                          - --artifact-prefix=${artifact_prefix}
+                result: train_job
+            - wait_for_train:
+                call: http.get
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs/" + train_job.body.reference.jobId}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                result: train_status
+            - check_train:
+                switch:
+                  - condition: $${train_status.body.status.state == "DONE"}
+                    next: train_complete
+                  - condition: $${train_status.body.status.state == "ERROR" or train_status.body.status.state == "CANCELLED"}
+                    next: train_failed
+            - wait_before_train_poll:
+                call: sys.sleep
+                args:
+                  seconds: 15
+                next: wait_for_train
+            - train_failed:
+                raise: $${train_status.body.status.details}
+            - train_complete:
+                assign:
+                  - train_job_id: $${train_status.body.reference.jobId}
         except:
           as: error
           steps:
@@ -201,19 +287,17 @@ main:
         switch:
           - condition: $${job_error != null}
             next: raise_error
-        next: run_train
+        next: refresh_superset_reporting
     - raise_error:
         raise: $${job_error}
-    - run_train:
-        call: googleapis.run.v2.projects.locations.jobs.run
-        args:
-          name: projects/${project_id}/locations/${region}/jobs/${ml_job_name}
     - refresh_superset_reporting:
         call: http.get
         args:
           url: "${superset_service_url}/health"
     - complete:
         return:
+          extractJobId: $${extract_job_id}
           loadJobId: $${load_job_id}
           transformJobId: $${dbt_job_id}
+          trainJobId: $${train_job_id}
           clusterDeleted: true

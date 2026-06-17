@@ -3,9 +3,10 @@
 Project 2 migrates the local lakehouse from Project 1 to Google Cloud while
 retaining Apache Iceberg, Apache Polaris, dbt Core, and XGBoost.
 
-The architecture prerequisites and **M1: Extract** are complete. The next
-data-flow milestone is **M2: Load**, which converts the raw clickstream sample
-into a bronze Iceberg table registered in Polaris.
+The core data-flow milestones are complete: extract, load, transform, train,
+and consume. The current pipeline runs through one parent Google Workflow that
+creates a temporary Spark cluster, runs the data pipeline, deletes the cluster,
+and refreshes Superset.
 See [PROJECT_2_SPEC.md](PROJECT_2_SPEC.md) for the delivery plan and
 [docs/architecture.md](docs/architecture.md) for the selected architecture.
 
@@ -29,7 +30,7 @@ project-2-cloud-lakehouse/
 │   ├── superset/         # Execute minimal Superset metadata/admin bootstrap
 │   └── README.md         # Minimal bootstrap boundary
 ├── deployment/           # Stage 3: PUBLISH deployable project artifacts
-│   ├── containers/       # Cloud Run image build contexts
+│   ├── containers/       # Cloud Run image build contexts for platform services
 │   ├── dbt/              # dbt project adapted for Spark
 │   ├── spark/            # Spark job entrypoints uploaded to GCS
 │   ├── workflows/        # Google Cloud Workflows source definitions
@@ -47,8 +48,8 @@ project-2-cloud-lakehouse/
 └── destroy.sh            # Tear down Terraform-managed resources
 ```
 
-Implementation is added incrementally as each milestone provisions and
-validates its assigned components.
+Implementation is organized so infrastructure, platform bootstrap, deployable
+artifacts, and pipeline execution remain visible as separate stages.
 
 ## Local Tooling
 
@@ -100,11 +101,11 @@ docker run -d \
 ```bash
 docker exec -it lakehouse-terraform /bin/sh
 ```
-3. Inside the container:
+3. Inside the container, provision Artifact Registry first:
 ```bash
 terraform init
-terraform apply
 terraform apply \
+  -target=google_artifact_registry_repository.pipeline \
   -var="polaris_database_password=$(sed -n 's/^POLARIS_DATABASE_PASSWORD=//p' /workspace/.credentials/setup.env)" \
   -var="polaris_root_client_secret=$(sed -n 's/^POLARIS_ROOT_CLIENT_SECRET=//p' /workspace/.credentials/setup.env)"
 ```
@@ -125,16 +126,15 @@ docker login \
   us-central1-docker.pkg.dev
 ```
 
-5. Build and push the real ingestion image:
+5. Build and push the Superset image:
 
 ```bash
 docker buildx build \
   --platform linux/amd64 \
   --provenance=false \
-  --target runtime \
-  --tag us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:dev-amd64 \
+  --tag us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/superset:dev-amd64 \
   --push \
-  deployment/containers/ingestion
+  deployment/containers/superset
 ```
 
 6. Re-enter the Terraform container:
@@ -143,30 +143,26 @@ docker buildx build \
 docker exec -it lakehouse-terraform /bin/sh
 ```
 
-7. Update the Cloud Run Job to use the ingestion image:
+7. Provision the full platform and deploy GCS-backed pipeline artifacts:
 
 ```bash
-terraform apply -var='ingestion_image=us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:dev-amd64'
+terraform apply \
+  -var='superset_image=us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/superset:dev-amd64' \
+  -var="polaris_database_password=$(sed -n 's/^POLARIS_DATABASE_PASSWORD=//p' /workspace/.credentials/setup.env)" \
+  -var="polaris_root_client_secret=$(sed -n 's/^POLARIS_ROOT_CLIENT_SECRET=//p' /workspace/.credentials/setup.env)"
 ```
 
-8. Exit the Terraform container and manually start `lakehouse-extract`:
+8. Bootstrap Polaris and Superset, then configure their managed assets:
 
 ```bash
 exit
 
-docker run --rm -it \
-  -v "$PWD/.credentials/gcloud:/config" \
-  -e CLOUDSDK_CONFIG=/config \
-  gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable \
-  gcloud workflows run lakehouse-extract \
-  --location=us-central1 \
-  --project=rez-cloud-lakehouse
+bootstrap/polaris/run.sh
+bootstrap/superset/run.sh
 ```
 
-
-
-9. Bootstrap Polaris:
+9. Trigger the deployed parent workflow:
 
 ```bash
-bootstrap/polaris/run.sh
+./run.sh
 ```

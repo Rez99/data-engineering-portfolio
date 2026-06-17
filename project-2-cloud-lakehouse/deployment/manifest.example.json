@@ -2,25 +2,25 @@
   "release_id": "example-git-sha-or-timestamp",
   "git_commit": "example-git-sha",
   "gcs_objects": {
+    "spark_extract": "gs://rez-cloud-lakehouse-validation/releases/example/spark/extract.py",
     "spark_load": "gs://rez-cloud-lakehouse-validation/releases/example/spark/load_events.py",
     "spark_dbt_runner": "gs://rez-cloud-lakehouse-validation/releases/example/spark/run_dbt.py",
+    "spark_train": "gs://rez-cloud-lakehouse-validation/releases/example/spark/train_model.py",
+    "spark_train_library": "gs://rez-cloud-lakehouse-validation/releases/example/spark/train.py",
     "dbt_project": "gs://rez-cloud-lakehouse-validation/releases/example/dbt/dbt-project.zip"
   },
   "images": {
-    "ingestion": "us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:example",
-    "ml": "us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ml:example",
     "superset": "us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/superset:example"
   },
   "workflows": {
-    "pipeline": "lakehouse-pipeline",
-    "extract": "lakehouse-extract",
-    "load": "lakehouse-load",
-    "transform": "lakehouse-transform",
-    "train": "lakehouse-train"
+    "pipeline": "lakehouse-pipeline"
   },
   "hashes": {
+    "deployment/spark/extract.py": "sha256:example",
     "deployment/spark/load_events.py": "sha256:example",
     "deployment/spark/run_dbt.py": "sha256:example",
+    "deployment/spark/train_model.py": "sha256:example",
+    "deployment/spark/train.py": "sha256:example",
     "deployment/workflows/pipeline.yaml": "sha256:example",
     "deployment/dbt": "sha256:example"
   }

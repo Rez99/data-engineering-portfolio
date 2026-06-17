@@ -1,10 +1,25 @@
+import argparse
 import csv
 import gzip
 import io
-import os
+import subprocess
+import sys
 
-import requests
-from google.cloud import storage
+
+def ensure_dependencies() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--disable-pip-version-check",
+            "google-cloud-storage==3.1.1",
+            "requests==2.32.4",
+        ],
+        check=True,
+    )
 
 
 EXPECTED_COLUMNS = [
@@ -71,11 +86,9 @@ def validate_sample(source, expected_rows, expected_columns):
     return rows_read
 
 
-def extract():
-    source_url = os.environ["SOURCE_URL"]
-    destination_bucket = os.environ["DESTINATION_BUCKET"]
-    destination_object = os.environ["DESTINATION_OBJECT"]
-    max_rows = int(os.environ["MAX_ROWS"])
+def extract(source_url, destination_bucket, destination_object, max_rows):
+    from google.cloud import storage
+    import requests
 
     if max_rows < 1:
         raise ValueError("MAX_ROWS must be greater than zero")
@@ -115,4 +128,19 @@ def extract():
 
 
 if __name__ == "__main__":
-    extract()
+    parser = argparse.ArgumentParser(
+        description="Extract a bounded ecommerce clickstream sample into GCS."
+    )
+    parser.add_argument("--source-url", required=True)
+    parser.add_argument("--destination-bucket", required=True)
+    parser.add_argument("--destination-object", required=True)
+    parser.add_argument("--max-rows", type=int, required=True)
+    args = parser.parse_args()
+
+    ensure_dependencies()
+    extract(
+        source_url=args.source_url,
+        destination_bucket=args.destination_bucket,
+        destination_object=args.destination_object,
+        max_rows=args.max_rows,
+    )

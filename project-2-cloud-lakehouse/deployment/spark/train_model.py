@@ -1,12 +1,10 @@
-import os
+from __future__ import annotations
+
+import argparse
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-import pyarrow.dataset as ds
-import pyarrow.parquet as pq
-from google.cloud import storage
 
 
 EXPECTED_COLUMNS = {
@@ -28,19 +26,35 @@ ARTIFACT_PATHS = {
 }
 
 
-def required_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise ValueError(f"Required environment variable is not set: {name}")
-    return value
+def ensure_dependencies() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--disable-pip-version-check",
+            "duckdb==1.3.1",
+            "google-cloud-storage==3.1.1",
+            "numpy==2.3.0",
+            "pandas==2.3.0",
+            "pyarrow==20.0.0",
+            "scikit-learn==1.7.0",
+            "xgboost==3.0.2",
+        ],
+        check=True,
+    )
 
 
 def download_parquet_files(
-    client: storage.Client,
+    client,
     bucket_name: str,
     prefix: str,
     destination: Path,
 ) -> list[Path]:
+    from google.cloud import storage
+
     paths = []
     for blob in client.list_blobs(bucket_name, prefix=prefix):
         if not blob.name.endswith(".parquet"):
@@ -56,6 +70,8 @@ def download_parquet_files(
 
 
 def validate_features(paths: list[Path]) -> dict[str, object]:
+    import pyarrow.dataset as ds
+
     dataset = ds.dataset([str(path) for path in paths], format="parquet")
     columns = set(dataset.schema.names)
     missing = EXPECTED_COLUMNS - columns
@@ -75,6 +91,8 @@ def validate_features(paths: list[Path]) -> dict[str, object]:
 
 
 def merge_parquet_files(paths: list[Path], destination: Path) -> None:
+    import pyarrow.parquet as pq
+
     writer = None
     try:
         for path in paths:
@@ -96,7 +114,7 @@ def merge_parquet_files(paths: list[Path], destination: Path) -> None:
 
 
 def upload_artifacts(
-    client: storage.Client,
+    client,
     bucket_name: str,
     prefix: str,
     output_dir: Path,
@@ -112,11 +130,13 @@ def upload_artifacts(
         print(f"Uploaded gs://{bucket_name}/{object_name}")
 
 
-def run() -> None:
-    feature_bucket = required_env("FEATURE_BUCKET")
-    feature_prefix = required_env("FEATURE_PREFIX")
-    artifact_bucket = required_env("ARTIFACT_BUCKET")
-    artifact_prefix = required_env("ARTIFACT_PREFIX")
+def run(
+    feature_bucket: str,
+    feature_prefix: str,
+    artifact_bucket: str,
+    artifact_prefix: str,
+) -> None:
+    from google.cloud import storage
 
     client = storage.Client()
     with tempfile.TemporaryDirectory(prefix="lakehouse-ml-") as temp_dir:
@@ -156,4 +176,19 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(
+        description="Train XGBoost from exported feature Parquet files."
+    )
+    parser.add_argument("--feature-bucket", required=True)
+    parser.add_argument("--feature-prefix", required=True)
+    parser.add_argument("--artifact-bucket", required=True)
+    parser.add_argument("--artifact-prefix", required=True)
+    args = parser.parse_args()
+
+    ensure_dependencies()
+    run(
+        feature_bucket=args.feature_bucket,
+        feature_prefix=args.feature_prefix,
+        artifact_bucket=args.artifact_bucket,
+        artifact_prefix=args.artifact_prefix,
+    )

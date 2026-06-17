@@ -89,27 +89,27 @@ than data-flow milestones. ADR-0001 through ADR-0003 are accepted, and
 
 ### M1: Extract
 
-**Outcome:** Workflows triggers a container that streams the header and first
-1,000,000 ecommerce clickstream rows from the internet into Cloud Storage.
+**Outcome:** The parent workflow submits an extraction job to the temporary
+Spark cluster. The job streams the header and first 1,000,000 ecommerce
+clickstream rows from the internet into Cloud Storage.
 
 | Mini-milestone | Deliverable | Why it is needed | Status |
 | --- | --- | --- | --- |
 | **M1.1 Storage foundation** | Terraform provisions the private raw GCS bucket. | Extracted data requires a durable landing location. | 🟢 Completed |
-| **M1.2 Extract compute** | Terraform provisions Artifact Registry, IAM, and the ingestion Cloud Run Job. | The extraction code needs a secure image registry, execution environment, and permission to write to GCS. | 🟢 Completed |
-| **M1.3 Extraction logic** | The container streams the header and first 1,000,000 rows directly into GCS without materializing the full source dataset. | This is the actual Extract operation and its memory-safe sampling behavior. | 🟢 Completed |
-| **M1.4 Orchestration** | Workflows invokes and monitors the ingestion Cloud Run Job. | It establishes the orchestration pattern that later pipeline stages will reuse. | 🟢 Completed |
+| **M1.2 Extract compute** | Terraform provisions Spark runtime IAM and uploads the extraction script to GCS. | The extraction code has an execution environment and permission to write to GCS. | 🟢 Completed |
+| **M1.3 Extraction logic** | The Spark-submitted Python job streams the header and first 1,000,000 rows directly into GCS without materializing the full source dataset. | This is the actual Extract operation and its memory-safe sampling behavior. | 🟢 Completed |
+| **M1.4 Orchestration** | The parent workflow invokes and monitors extraction as the first job on the temporary Spark cluster. | It establishes the orchestration pattern used by load, transform, and train. | 🟢 Completed |
 | **M1.5 Validation** | Verify the object location, schema, and exact row count. | A successful job alone does not prove that the extracted data is correct. | 🟢 Completed |
 
-M1 intentionally excludes Cloud Scheduler, Polaris, Cloud SQL, Iceberg, Spark,
-dbt, XGBoost, and Looker Studio. Those components are introduced only when a
-later data-flow milestone requires them.
+M1 originally proved extraction in isolation. In the final architecture, the
+same extraction behavior is executed by the parent `lakehouse-pipeline`
+workflow on the shared temporary Spark cluster.
 
-M1 was verified by a successful `lakehouse-extract` workflow execution. The
-ingestion job independently reopened the uploaded object and confirmed valid
+The extraction job independently reopens the uploaded object and confirms valid
 gzip-compressed CSV, exactly 1,000,000 data rows, and the 9 expected columns.
-After verification, Terraform destroys the milestone environment to avoid idle
-cloud costs; the configuration can recreate it when the next milestone needs
-the shared resources.
+After verification, Terraform can destroy the environment to avoid idle cloud
+costs; the configuration can recreate it when the next milestone needs the
+shared resources.
 
 ### M2: Load
 

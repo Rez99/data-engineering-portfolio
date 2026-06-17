@@ -9,15 +9,10 @@ import pyarrow.parquet as pq
 
 sys.path.insert(
     0,
-    str(
-        Path(__file__).resolve().parents[2]
-        / "deployment"
-        / "containers"
-        / "ml"
-    ),
+    str(Path(__file__).resolve().parents[2] / "deployment" / "spark"),
 )
 
-from cloud_job import (
+from train_model import (
     ARTIFACT_PATHS,
     merge_parquet_files,
     upload_artifacts,

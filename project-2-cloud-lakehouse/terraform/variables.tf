@@ -16,18 +16,6 @@ variable "clickstream_source_url" {
   default     = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 }
 
-variable "ingestion_image" {
-  description = "Container image used by the ingestion Cloud Run Job."
-  type        = string
-  default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
-}
-
-variable "ml_image" {
-  description = "Container image used by the machine-learning Cloud Run Job."
-  type        = string
-  default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
-}
-
 variable "superset_image" {
   description = "Container image used by the Superset Cloud Run service and bootstrap job."
   type        = string

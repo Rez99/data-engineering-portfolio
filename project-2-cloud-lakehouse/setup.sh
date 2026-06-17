@@ -10,15 +10,13 @@ readonly GCLOUD_CONFIG="${PROJECT_DIR}/.credentials/gcloud"
 readonly ADC_FILE="${GCLOUD_CONFIG}/application_default_credentials.json"
 readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
 readonly LOG_DIR="${PROJECT_DIR}/logs"
-readonly TERRAFORM_APPLY_1_LOG="${LOG_DIR}/terraform-apply-1-foundation.jsonl"
+readonly TERRAFORM_ARTIFACT_REGISTRY_LOG="${LOG_DIR}/terraform-apply-artifact-registry.jsonl"
+readonly TERRAFORM_APPLY_LOG="${LOG_DIR}/terraform-apply-full.jsonl"
 readonly TERRAFORM_POLARIS_LOG="${LOG_DIR}/terraform-apply-polaris.jsonl"
-readonly TERRAFORM_APPLY_2_LOG="${LOG_DIR}/terraform-apply-2-images.jsonl"
 readonly TERRAFORM_SUPERSET_LOG="${LOG_DIR}/terraform-apply-superset.jsonl"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
-readonly INGESTION_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/ingestion:dev-amd64"
-readonly ML_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/ml:dev-amd64"
 readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/superset:dev-amd64"
 readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
@@ -169,12 +167,39 @@ docker run --detach \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null
 
-printf '🟢 Terraform: Provision GCP resources\n'
-run_terraform /workspace/terraform init -input=false
+printf '🟢 Terraform: Provision Artifact Registry\n'
+run_terraform /workspace/terraform init -input=false >/dev/null 2>&1
 run_terraform /workspace/terraform apply \
   -json \
   -input=false \
-  -auto-approve >"${TERRAFORM_APPLY_1_LOG}" 2>&1
+  -auto-approve \
+  -target=google_artifact_registry_repository.pipeline >"${TERRAFORM_ARTIFACT_REGISTRY_LOG}"
+
+printf '🟢 Docker: Build and push Superset image\n'
+printf '   - GCloud: Request Artifact Registry access token\n'
+access_token="$(gcloud_cmd auth print-access-token)"
+
+printf '   - Docker: Authenticate to Artifact Registry\n'
+printf '%s' "${access_token}" |
+  docker login \
+    --username oauth2accesstoken \
+    --password-stdin \
+    "${REGISTRY_HOST}"
+
+printf '   - Docker: Build and push Superset image\n'
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --tag "${SUPERSET_IMAGE}" \
+  --push \
+  "${PROJECT_DIR}/deployment/containers/superset"
+
+printf '🟢 Terraform: Provision GCP resources\n'
+run_terraform /workspace/terraform apply \
+  -json \
+  -input=false \
+  -auto-approve \
+  -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_LOG}"
 
 printf '🟢 Polaris: Bootstrap realm and root credentials\n'
 if polaris_root_auth_ready; then
@@ -198,52 +223,6 @@ run_terraform /workspace/terraform-polaris apply \
   -var="polaris_root_client_secret=${POLARIS_ROOT_CLIENT_SECRET}" \
   -var="warehouse_location=${POLARIS_WAREHOUSE}" \
   -var="gcs_service_account=${POLARIS_SERVICE_ACCOUNT}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
-
-printf '🟢 Docker: Build and push application images\n'
-printf '   - GCloud: Request Artifact Registry access token\n'
-access_token="$(gcloud_cmd auth print-access-token)"
-
-printf '   - Docker: Authenticate to Artifact Registry\n'
-printf '%s' "${access_token}" |
-  docker login \
-    --username oauth2accesstoken \
-    --password-stdin \
-    "${REGISTRY_HOST}"
-
-printf '   - Docker: Build and push ingestion image\n'
-docker buildx build \
-  --platform linux/amd64 \
-  --provenance=false \
-  --target runtime \
-  --tag "${INGESTION_IMAGE}" \
-  --push \
-  "${PROJECT_DIR}/deployment/containers/ingestion"
-
-printf '   - Docker: Build and push ML image\n'
-docker buildx build \
-  --platform linux/amd64 \
-  --provenance=false \
-  --target runtime \
-  --tag "${ML_IMAGE}" \
-  --push \
-  "${PROJECT_DIR}/deployment/containers/ml"
-
-printf '   - Docker: Build and push Superset image\n'
-docker buildx build \
-  --platform linux/amd64 \
-  --provenance=false \
-  --tag "${SUPERSET_IMAGE}" \
-  --push \
-  "${PROJECT_DIR}/deployment/containers/superset"
-
-printf '🟢 Terraform: Update Cloud Run Job deployments\n'
-run_terraform /workspace/terraform apply \
-  -json \
-  -input=false \
-  -auto-approve \
-  -var="ingestion_image=${INGESTION_IMAGE}" \
-  -var="ml_image=${ML_IMAGE}" \
-  -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_2_LOG}" 2>&1
 
 printf '🟢 Superset: Bootstrap metadata and admin user\n'
 env \

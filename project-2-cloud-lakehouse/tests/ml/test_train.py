@@ -19,10 +19,7 @@ EXPECTED_ARTIFACTS = [
 ]
 
 ML_SOURCE_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "deployment"
-    / "containers"
-    / "ml"
+    Path(__file__).resolve().parents[2] / "deployment" / "spark"
 )
 
 

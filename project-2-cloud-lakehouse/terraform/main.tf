@@ -49,7 +49,7 @@ resource "google_storage_bucket" "validation" {
     project     = "cloud-lakehouse"
   }
 
-  depends_on = [google_project_service.required]
+  depends_on = [google_project_service.required["storage.googleapis.com"]]
 }
 
 resource "google_artifact_registry_repository" "pipeline" {
@@ -64,157 +64,7 @@ resource "google_artifact_registry_repository" "pipeline" {
     project     = "cloud-lakehouse"
   }
 
-  depends_on = [google_project_service.required]
-}
-
-resource "google_service_account" "ingestion" {
-  project      = var.project_id
-  account_id   = "lakehouse-ingestion"
-  display_name = "Lakehouse ingestion job"
-  description  = "Runtime identity for extracting clickstream data into Cloud Storage."
-}
-
-resource "google_storage_bucket_iam_member" "ingestion_object_user" {
-  bucket = google_storage_bucket.validation.name
-  role   = "roles/storage.objectUser"
-  member = "serviceAccount:${google_service_account.ingestion.email}"
-}
-
-resource "google_cloud_run_v2_job" "ingestion" {
-  project  = var.project_id
-  name     = "lakehouse-ingestion"
-  location = var.region
-
-  deletion_protection = false
-
-  template {
-    task_count  = 1
-    parallelism = 1
-
-    template {
-      service_account = google_service_account.ingestion.email
-      max_retries     = 1
-      timeout         = "600s"
-
-      containers {
-        image = var.ingestion_image
-
-        env {
-          name  = "SOURCE_URL"
-          value = var.clickstream_source_url
-        }
-
-        env {
-          name  = "DESTINATION_BUCKET"
-          value = google_storage_bucket.validation.name
-        }
-
-        env {
-          name  = "DESTINATION_OBJECT"
-          value = "raw/2019-Oct-1000000.csv.gz"
-        }
-
-        env {
-          name  = "MAX_ROWS"
-          value = "1000000"
-        }
-
-        resources {
-          limits = {
-            cpu    = "1"
-            memory = "512Mi"
-          }
-        }
-      }
-    }
-  }
-
-  labels = {
-    environment = "demo"
-    project     = "cloud-lakehouse"
-    stage       = "extract"
-  }
-
-  depends_on = [
-    google_artifact_registry_repository.pipeline,
-    google_project_service.required,
-    google_storage_bucket_iam_member.ingestion_object_user,
-  ]
-}
-
-resource "google_service_account" "ml" {
-  project      = var.project_id
-  account_id   = "lakehouse-ml"
-  display_name = "Lakehouse machine-learning job"
-  description  = "Runtime identity for XGBoost training and artifact storage."
-}
-
-resource "google_storage_bucket_iam_member" "ml_object_admin" {
-  bucket = google_storage_bucket.validation.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.ml.email}"
-}
-
-resource "google_cloud_run_v2_job" "ml" {
-  project  = var.project_id
-  name     = "lakehouse-ml"
-  location = var.region
-
-  deletion_protection = false
-
-  template {
-    task_count  = 1
-    parallelism = 1
-
-    template {
-      service_account = google_service_account.ml.email
-      max_retries     = 0
-      timeout         = "1800s"
-
-      containers {
-        image = var.ml_image
-
-        env {
-          name  = "FEATURE_BUCKET"
-          value = google_storage_bucket.validation.name
-        }
-
-        env {
-          name  = "FEATURE_PREFIX"
-          value = "ml/features/"
-        }
-
-        env {
-          name  = "ARTIFACT_BUCKET"
-          value = google_storage_bucket.validation.name
-        }
-
-        env {
-          name  = "ARTIFACT_PREFIX"
-          value = "ml/xgboost_conversion"
-        }
-
-        resources {
-          limits = {
-            cpu    = "2"
-            memory = "2Gi"
-          }
-        }
-      }
-    }
-  }
-
-  labels = {
-    environment = "demo"
-    project     = "cloud-lakehouse"
-    stage       = "train"
-  }
-
-  depends_on = [
-    google_artifact_registry_repository.pipeline,
-    google_project_service.required,
-    google_storage_bucket_iam_member.ml_object_admin,
-  ]
+  depends_on = [google_project_service.required["artifactregistry.googleapis.com"]]
 }
 
 resource "google_service_account" "workflow" {
@@ -222,22 +72,6 @@ resource "google_service_account" "workflow" {
   account_id   = "lakehouse-workflow"
   display_name = "Lakehouse extraction workflow"
   description  = "Runtime identity used by Workflows to execute pipeline jobs."
-}
-
-resource "google_cloud_run_v2_job_iam_member" "workflow_ml_invoker" {
-  project  = google_cloud_run_v2_job.ml.project
-  location = google_cloud_run_v2_job.ml.location
-  name     = google_cloud_run_v2_job.ml.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.workflow.email}"
-}
-
-resource "google_cloud_run_v2_job_iam_member" "workflow_ingestion_invoker" {
-  project  = google_cloud_run_v2_job.ingestion.project
-  location = google_cloud_run_v2_job.ingestion.location
-  name     = google_cloud_run_v2_job.ingestion.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
 resource "google_project_iam_member" "workflow_run_viewer" {
@@ -261,62 +95,6 @@ resource "google_project_service_identity" "workflows" {
   depends_on = [google_project_service.required]
 }
 
-resource "google_workflows_workflow" "extract" {
-  project             = var.project_id
-  name                = "lakehouse-extract"
-  region              = var.region
-  description         = "Runs and monitors the ecommerce clickstream ingestion job."
-  service_account     = google_service_account.workflow.id
-  deletion_protection = false
-
-  source_contents = templatefile("${path.module}/../deployment/workflows/extract.yaml", {
-    project_id = var.project_id
-    region     = var.region
-    job_name   = google_cloud_run_v2_job.ingestion.name
-  })
-
-  labels = {
-    environment = "demo"
-    project     = "cloud-lakehouse"
-    stage       = "extract"
-  }
-
-  depends_on = [
-    google_cloud_run_v2_job_iam_member.workflow_ingestion_invoker,
-    google_project_service_identity.workflows,
-    google_project_iam_member.workflow_run_viewer,
-    google_project_service.required,
-  ]
-}
-
-resource "google_workflows_workflow" "train" {
-  project             = var.project_id
-  name                = "lakehouse-train"
-  region              = var.region
-  description         = "Runs and monitors XGBoost training and evaluation."
-  service_account     = google_service_account.workflow.id
-  deletion_protection = false
-
-  source_contents = templatefile("${path.module}/../deployment/workflows/cloud_run_job.yaml", {
-    project_id = var.project_id
-    region     = var.region
-    job_name   = google_cloud_run_v2_job.ml.name
-  })
-
-  labels = {
-    environment = "demo"
-    project     = "cloud-lakehouse"
-    stage       = "train"
-  }
-
-  depends_on = [
-    google_cloud_run_v2_job_iam_member.workflow_ml_invoker,
-    google_project_service_identity.workflows,
-    google_project_iam_member.workflow_run_viewer,
-    google_project_service.required,
-  ]
-}
-
 resource "google_workflows_workflow" "pipeline" {
   project             = var.project_id
   name                = "lakehouse-pipeline"
@@ -329,18 +107,24 @@ resource "google_workflows_workflow" "pipeline" {
     project_id              = var.project_id
     region                  = var.region
     cluster_name            = "lakehouse-spark-pipeline"
-    ingestion_job_name      = google_cloud_run_v2_job.ingestion.name
-    ml_job_name             = google_cloud_run_v2_job.ml.name
     superset_service_url    = google_cloud_run_v2_service.superset.uri
     spark_service_account   = google_service_account.spark.email
     staging_bucket          = google_storage_bucket.validation.name
+    extract_script_uri      = "gs://${google_storage_bucket_object.extract.bucket}/${google_storage_bucket_object.extract.name}"
     load_script_uri         = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
     runner_script_uri       = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
+    train_script_uri        = "gs://${google_storage_bucket_object.train_model.bucket}/${google_storage_bucket_object.train_model.name}"
+    train_library_uri       = "gs://${google_storage_bucket_object.train.bucket}/${google_storage_bucket_object.train.name}"
     dbt_project_archive_uri = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
+    source_url              = var.clickstream_source_url
+    raw_bucket              = google_storage_bucket.validation.name
+    raw_object              = "raw/2019-Oct-1000000.csv.gz"
     raw_csv_uri             = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
     expected_rows           = "1000000"
     polaris_url             = google_cloud_run_v2_service.polaris.uri
     polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
+    artifact_bucket         = google_storage_bucket.validation.name
+    artifact_prefix         = "ml/xgboost_conversion"
     feature_export_uri      = "gs://${google_storage_bucket.validation.name}/ml/features/"
   })
 
@@ -351,8 +135,6 @@ resource "google_workflows_workflow" "pipeline" {
   }
 
   depends_on = [
-    google_cloud_run_v2_job_iam_member.workflow_ingestion_invoker,
-    google_cloud_run_v2_job_iam_member.workflow_ml_invoker,
     google_project_iam_member.workflow_dataproc_editor,
     google_project_iam_member.workflow_run_viewer,
     google_project_service.required,
@@ -360,8 +142,11 @@ resource "google_workflows_workflow" "pipeline" {
     google_secret_manager_secret_iam_member.spark_polaris_secret_accessor,
     google_service_account_iam_member.workflow_spark_user,
     google_storage_bucket_object.dbt_project,
+    google_storage_bucket_object.extract,
     google_storage_bucket_object.load_events,
     google_storage_bucket_object.run_dbt,
+    google_storage_bucket_object.train,
+    google_storage_bucket_object.train_model,
   ]
 }
 
@@ -758,6 +543,14 @@ resource "google_secret_manager_secret_iam_member" "spark_polaris_secret_accesso
   member    = "serviceAccount:${google_service_account.spark.email}"
 }
 
+resource "google_storage_bucket_object" "extract" {
+  name   = "spark/extract.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../deployment/spark/extract.py"
+
+  depends_on = [google_project_service.required]
+}
+
 resource "google_storage_bucket_object" "load_events" {
   name   = "spark/load_events.py"
   bucket = google_storage_bucket.validation.name
@@ -790,6 +583,22 @@ resource "google_storage_bucket_object" "run_dbt" {
   name   = "spark/run_dbt.py"
   bucket = google_storage_bucket.validation.name
   source = "${path.module}/../deployment/spark/run_dbt.py"
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_storage_bucket_object" "train_model" {
+  name   = "spark/train_model.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../deployment/spark/train_model.py"
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_storage_bucket_object" "train" {
+  name   = "spark/train.py"
+  bucket = google_storage_bucket.validation.name
+  source = "${path.module}/../deployment/spark/train.py"
 
   depends_on = [google_project_service.required]
 }
