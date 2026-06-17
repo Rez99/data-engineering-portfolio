@@ -14,12 +14,14 @@ readonly TERRAFORM_ARTIFACT_REGISTRY_LOG="${LOG_DIR}/terraform-apply-artifact-re
 readonly TERRAFORM_APPLY_LOG="${LOG_DIR}/terraform-apply-full.jsonl"
 readonly TERRAFORM_POLARIS_LOG="${LOG_DIR}/terraform-apply-polaris.jsonl"
 readonly TERRAFORM_SUPERSET_LOG="${LOG_DIR}/terraform-apply-superset.jsonl"
+readonly SETUP_COMMAND_LOG="${LOG_DIR}/setup-commands.log"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
 readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/superset:dev-amd64"
 readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
+readonly SUPERSET_SERVICE="lakehouse-superset"
 readonly SUPERSET_BOOTSTRAP_JOB="lakehouse-superset-bootstrap"
 readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
 readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -209,7 +211,7 @@ else
     PROJECT_ID="${PROJECT_ID}" \
     REGION="${REGION}" \
     POLARIS_BOOTSTRAP_JOB="${POLARIS_BOOTSTRAP_JOB}" \
-    "${PROJECT_DIR}/bootstrap/polaris/run.sh" >/dev/null
+    "${PROJECT_DIR}/bootstrap/polaris/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
 fi
 
 printf '🟢 Terraform: Configure Polaris catalog\n'
@@ -229,7 +231,16 @@ env \
   PROJECT_ID="${PROJECT_ID}" \
   REGION="${REGION}" \
   SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
-  "${PROJECT_DIR}/bootstrap/superset/run.sh" >/dev/null
+  "${PROJECT_DIR}/bootstrap/superset/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
+
+printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
+"${PROJECT_DIR}/run.sh"
+
+printf '🟢 Superset: Refresh metrics runtime\n'
+gcloud_cmd run services update "${SUPERSET_SERVICE}" \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}" \
+  --update-env-vars="METRICS_REFRESHED_AT=$(date +%s)" >>"${SETUP_COMMAND_LOG}" 2>&1
 
 printf '🟢 Terraform: Configure Superset assets\n'
 SUPERSET_URL="$(terraform_output /workspace/terraform -raw superset_service_url)"
@@ -240,8 +251,5 @@ run_terraform /workspace/terraform-superset apply \
   -auto-approve \
   -var="superset_endpoint=${SUPERSET_URL}" \
   -var="superset_password=${SUPERSET_ADMIN_PASSWORD}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
-
-printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
-"${PROJECT_DIR}/run.sh"
 
 printf '🟢 Setup complete\n'

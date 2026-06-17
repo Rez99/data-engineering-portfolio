@@ -16,8 +16,11 @@ fi
 
 docker run --rm \
   --volume "${GCLOUD_CONFIG}:/config" \
+  --volume "${PROJECT_DIR}/deployment/workflows/run_pipeline.py:/app/run_pipeline.py:ro" \
   --env CLOUDSDK_CONFIG=/config \
+  --env PYTHONUNBUFFERED=1 \
+  --env PROJECT_ID="${PROJECT_ID}" \
+  --env REGION="${REGION}" \
+  --env PIPELINE_WORKFLOW="${PIPELINE_WORKFLOW}" \
   "${GCLOUD_IMAGE}" \
-  gcloud workflows run "${PIPELINE_WORKFLOW}" \
-  --location="${REGION}" \
-  --project="${PROJECT_ID}"
+  python3 /app/run_pipeline.py

@@ -43,21 +43,6 @@ output "spark_load_script_uri" {
   value       = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
 }
 
-output "load_workflow_name" {
-  description = "Name of the workflow that runs the temporary Spark load."
-  value       = google_workflows_workflow.load.name
-}
-
-output "dbt_smoke_workflow_name" {
-  description = "Name of the workflow that verifies dbt-to-Spark-to-Polaris integration."
-  value       = google_workflows_workflow.dbt_smoke.name
-}
-
-output "transform_workflow_name" {
-  description = "Name of the workflow that builds the session-level feature table."
-  value       = google_workflows_workflow.transform.name
-}
-
 output "pipeline_workflow_name" {
   description = "Name of the parent workflow that runs the end-to-end pipeline."
   value       = google_workflows_workflow.pipeline.name
