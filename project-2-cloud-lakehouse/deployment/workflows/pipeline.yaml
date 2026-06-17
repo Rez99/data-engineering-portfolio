@@ -287,13 +287,9 @@ main:
         switch:
           - condition: $${job_error != null}
             next: raise_error
-        next: refresh_superset_reporting
+        next: complete
     - raise_error:
         raise: $${job_error}
-    - refresh_superset_reporting:
-        call: http.get
-        args:
-          url: "${superset_service_url}/health"
     - complete:
         return:
           extractJobId: $${extract_job_id}

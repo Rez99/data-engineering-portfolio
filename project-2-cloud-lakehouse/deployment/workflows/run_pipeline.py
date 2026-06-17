@@ -46,7 +46,6 @@ PHASES = {
     "check_delete_operation": "Deleting Spark cluster",
     "wait_for_delete": "Deleting Spark cluster",
     "finish_spark": "Finalizing Spark work",
-    "refresh_superset_reporting": "Refreshing Superset",
     "complete": "Completing workflow",
 }
 

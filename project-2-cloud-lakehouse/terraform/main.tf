@@ -107,7 +107,6 @@ resource "google_workflows_workflow" "pipeline" {
     project_id              = var.project_id
     region                  = var.region
     cluster_name            = "lakehouse-spark-pipeline"
-    superset_service_url    = google_cloud_run_v2_service.superset.uri
     spark_service_account   = google_service_account.spark.email
     staging_bucket          = google_storage_bucket.validation.name
     extract_script_uri      = "gs://${google_storage_bucket_object.extract.bucket}/${google_storage_bucket_object.extract.name}"

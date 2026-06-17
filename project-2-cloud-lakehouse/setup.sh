@@ -27,6 +27,7 @@ readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
 readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
 readonly POLARIS_REALM="POLARIS"
 readonly POLARIS_ROOT_CLIENT_ID="admin"
+readonly PIPELINE_SUCCESS_SENTINEL="gs://${PROJECT_ID}-validation/ml/xgboost_conversion/metrics/metrics.parquet"
 
 if [[ ! -f "${ADC_FILE}" ]]; then
   printf 'Missing Google Cloud credentials: %s\n' "${ADC_FILE}" >&2
@@ -134,6 +135,26 @@ get_cloud_run_identity_token() {
   gcloud_cmd auth print-identity-token
 }
 
+get_superset_url() {
+  gcloud_cmd run services describe "${SUPERSET_SERVICE}" \
+    --region="${REGION}" \
+    --project="${PROJECT_ID}" \
+    --format='value(status.url)'
+}
+
+superset_health_ready() {
+  local superset_url
+
+  superset_url="$(get_superset_url)"
+  curl --silent --fail --output /dev/null \
+    "${superset_url}/health" 2>/dev/null
+}
+
+pipeline_outputs_ready() {
+  gcloud_cmd storage objects describe "${PIPELINE_SUCCESS_SENTINEL}" \
+    --project="${PROJECT_ID}" >/dev/null 2>&1
+}
+
 polaris_root_auth_ready() {
   local polaris_url
   local identity_token
@@ -227,14 +248,22 @@ run_terraform /workspace/terraform-polaris apply \
   -var="gcs_service_account=${POLARIS_SERVICE_ACCOUNT}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
 
 printf '🟢 Superset: Bootstrap metadata and admin user\n'
-env \
-  PROJECT_ID="${PROJECT_ID}" \
-  REGION="${REGION}" \
-  SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
-  "${PROJECT_DIR}/bootstrap/superset/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
+if superset_health_ready; then
+  printf '   - Superset: Metadata already initialized; skipping bootstrap\n'
+else
+  env \
+    PROJECT_ID="${PROJECT_ID}" \
+    REGION="${REGION}" \
+    SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
+    "${PROJECT_DIR}/bootstrap/superset/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
+fi
 
 printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
-"${PROJECT_DIR}/run.sh"
+if pipeline_outputs_ready; then
+  printf '   - Pipeline outputs already exist; skipping Spark run\n'
+else
+  "${PROJECT_DIR}/run.sh"
+fi
 
 printf '🟢 Superset: Refresh metrics runtime\n'
 gcloud_cmd run services update "${SUPERSET_SERVICE}" \
@@ -244,12 +273,16 @@ gcloud_cmd run services update "${SUPERSET_SERVICE}" \
 
 printf '🟢 Terraform: Configure Superset assets\n'
 SUPERSET_URL="$(terraform_output /workspace/terraform -raw superset_service_url)"
-run_terraform /workspace/terraform-superset init -input=false
-run_terraform /workspace/terraform-superset apply \
-  -json \
-  -input=false \
-  -auto-approve \
-  -var="superset_endpoint=${SUPERSET_URL}" \
-  -var="superset_password=${SUPERSET_ADMIN_PASSWORD}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
+run_terraform /workspace/terraform-superset init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
+superset_tf_args=(
+  apply
+  -json
+  -input=false
+  -auto-approve
+  -parallelism=1
+  "-var=superset_endpoint=${SUPERSET_URL}"
+  "-var=superset_password=${SUPERSET_ADMIN_PASSWORD}"
+)
+run_terraform /workspace/terraform-superset "${superset_tf_args[@]}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
 
 printf '🟢 Setup complete\n'

@@ -14,7 +14,9 @@ if [[ ! -d "${GCLOUD_CONFIG}" ]]; then
   exit 1
 fi
 
-docker run --rm \
+docker_args=(
+  run
+  --rm
   --volume "${GCLOUD_CONFIG}:/config" \
   --volume "${PROJECT_DIR}/deployment/workflows/run_pipeline.py:/app/run_pipeline.py:ro" \
   --env CLOUDSDK_CONFIG=/config \
@@ -22,5 +24,9 @@ docker run --rm \
   --env PROJECT_ID="${PROJECT_ID}" \
   --env REGION="${REGION}" \
   --env PIPELINE_WORKFLOW="${PIPELINE_WORKFLOW}" \
-  "${GCLOUD_IMAGE}" \
-  python3 /app/run_pipeline.py
+  "${GCLOUD_IMAGE}"
+  python3
+  /app/run_pipeline.py
+)
+
+docker "${docker_args[@]}"
