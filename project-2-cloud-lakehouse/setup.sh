@@ -22,6 +22,8 @@ readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
 readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
 readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
+readonly POLARIS_REALM="POLARIS"
+readonly POLARIS_ROOT_CLIENT_ID="admin"
 
 if [[ ! -f "${ADC_FILE}" ]]; then
   printf 'Missing Google Cloud credentials: %s\n' "${ADC_FILE}" >&2
@@ -98,6 +100,33 @@ gcloud_cmd() {
     gcloud "$@"
 }
 
+get_polaris_url() {
+  gcloud_cmd run services describe "${POLARIS_SERVICE}" \
+    --region="${REGION}" \
+    --project="${PROJECT_ID}" \
+    --format='value(status.url)'
+}
+
+get_cloud_run_identity_token() {
+  gcloud_cmd auth print-identity-token
+}
+
+polaris_root_auth_ready() {
+  local polaris_url
+  local identity_token
+
+  polaris_url="$(get_polaris_url)"
+  identity_token="$(get_cloud_run_identity_token)"
+
+  curl --silent --fail --output /dev/null \
+    --header "Polaris-Realm: ${POLARIS_REALM}" \
+    --header "X-Serverless-Authorization: Bearer ${identity_token}" \
+    --user "${POLARIS_ROOT_CLIENT_ID}:${POLARIS_ROOT_CLIENT_SECRET}" \
+    --data 'grant_type=client_credentials' \
+    --data 'scope=PRINCIPAL_ROLE:ALL' \
+    "${polaris_url}/api/catalog/v1/oauth/tokens" 2>/dev/null
+}
+
 trap cleanup EXIT
 cleanup
 
@@ -125,10 +154,14 @@ docker exec "${TERRAFORM_CONTAINER}" terraform apply \
   -auto-approve >"${TERRAFORM_APPLY_1_LOG}" 2>&1
 
 printf '🟢 Polaris: Bootstrap realm and root credentials\n'
-gcloud_cmd run jobs execute "${POLARIS_BOOTSTRAP_JOB}" \
-  --region="${REGION}" \
-  --project="${PROJECT_ID}" \
-  --wait >/dev/null
+if polaris_root_auth_ready; then
+  printf '   - Polaris: Root credentials already work; skipping bootstrap\n'
+else
+  gcloud_cmd run jobs execute "${POLARIS_BOOTSTRAP_JOB}" \
+    --region="${REGION}" \
+    --project="${PROJECT_ID}" \
+    --wait >/dev/null
+fi
 
 printf '🟢 Docker: Build and push application images\n'
 printf '   - GCloud: Request Artifact Registry access token\n'
@@ -148,7 +181,7 @@ docker buildx build \
   --target runtime \
   --tag "${INGESTION_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/services/ingestion" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/ingestion" >/dev/null 2>&1
 
 printf '   - Docker: Build and push ML image\n'
 docker buildx build \
@@ -157,7 +190,7 @@ docker buildx build \
   --target runtime \
   --tag "${ML_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/services/ml" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/ml" >/dev/null 2>&1
 
 printf '   - Docker: Build and push Superset image\n'
 docker buildx build \
@@ -165,7 +198,7 @@ docker buildx build \
   --provenance=false \
   --tag "${SUPERSET_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/services/superset" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/superset" >/dev/null 2>&1
 
 printf '🟢 Terraform: Update Cloud Run Job deployments\n'
 docker exec "${TERRAFORM_CONTAINER}" terraform apply \
@@ -178,17 +211,14 @@ docker exec "${TERRAFORM_CONTAINER}" terraform apply \
 
 printf '🟢 Polaris: Configure and verify Iceberg warehouse\n'
 POLARIS_URL="$(
-  gcloud_cmd run services describe "${POLARIS_SERVICE}" \
-    --region="${REGION}" \
-    --project="${PROJECT_ID}" \
-    --format='value(status.url)'
+  get_polaris_url
 )"
-CLOUD_RUN_IDENTITY_TOKEN="$(gcloud_cmd auth print-identity-token)"
+CLOUD_RUN_IDENTITY_TOKEN="$(get_cloud_run_identity_token)"
 export POLARIS_URL
 export CLOUD_RUN_IDENTITY_TOKEN
 
 docker run --rm \
-  --volume "${PROJECT_DIR}/services/polaris:/app:ro" \
+  --volume "${PROJECT_DIR}/bootstrap/polaris:/app:ro" \
   --workdir /app \
   --env POLARIS_URL \
   --env CLOUD_RUN_IDENTITY_TOKEN \
@@ -200,8 +230,6 @@ docker run --rm \
   'pip install --quiet --root-user-action=ignore --disable-pip-version-check --no-cache-dir -r requirements.txt && python configure.py'
 
 printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
-gcloud_cmd workflows run lakehouse-pipeline \
-  --location="${REGION}" \
-  --project="${PROJECT_ID}" >/dev/null 2>&1
+"${PROJECT_DIR}/run.sh" >/dev/null 2>&1
 
 printf '🟢 Setup complete\n'

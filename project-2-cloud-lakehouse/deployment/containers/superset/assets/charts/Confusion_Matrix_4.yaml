@@ -1,0 +1,44 @@
+slice_name: Confusion Matrix
+description: null
+certified_by: null
+certification_details: null
+viz_type: heatmap_v2
+params:
+  adhoc_filters: []
+  datasource: 2__table
+  row_limit: 10000
+  time_range: No filter
+  viz_type: heatmap_v2
+  x_axis: predicted
+  groupby: actual
+  metric:
+    aggregate: SUM
+    column:
+      column_name: count
+      filterable: true
+      groupby: true
+      type: BIGINT
+    expressionType: SIMPLE
+    label: Observations
+    optionName: metric_count_sum
+  linear_color_scheme: superset_seq_1
+  legend_type: continuous
+  show_legend: false
+  show_values: true
+  show_percentage: false
+  normalize_across: heatmap
+  sort_x_axis: alpha_asc
+  sort_y_axis: alpha_asc
+  value_bounds:
+  - null
+  - null
+  xscale_interval: -1
+  yscale_interval: -1
+  bottom_margin: auto
+  left_margin: auto
+  y_axis_format: SMART_NUMBER
+query_context: null
+cache_timeout: null
+uuid: 30000000-0000-0000-0000-000000000004
+version: 1.0.0
+dataset_uuid: 20000000-0000-0000-0000-000000000002

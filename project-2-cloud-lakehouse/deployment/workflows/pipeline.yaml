@@ -1,0 +1,218 @@
+main:
+  steps:
+    - initialize:
+        assign:
+          - project: ${project_id}
+          - region: ${region}
+          - cluster: ${cluster_name}
+          - dataproc_url: https://dataproc.googleapis.com/v1
+          - job_error: null
+          - load_job_id: null
+          - dbt_job_id: null
+    - run_extract:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: projects/${project_id}/locations/${region}/jobs/${ingestion_job_name}
+    - create_cluster:
+        call: http.post
+        args:
+          url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/clusters"}'
+          auth:
+            type: OAuth2
+            scope: https://www.googleapis.com/auth/cloud-platform
+          body:
+            projectId: $${project}
+            clusterName: $${cluster}
+            config:
+              tempBucket: ${staging_bucket}
+              gceClusterConfig:
+                internalIpOnly: false
+                serviceAccount: ${spark_service_account}
+                serviceAccountScopes:
+                  - https://www.googleapis.com/auth/cloud-platform
+              masterConfig:
+                numInstances: 1
+                machineTypeUri: e2-standard-2
+                diskConfig:
+                  bootDiskSizeGb: 50
+              softwareConfig:
+                imageVersion: 2.2-debian12
+                optionalComponents:
+                  - ICEBERG
+                properties:
+                  "dataproc:dataproc.allow.zero.workers": "true"
+              lifecycleConfig:
+                idleDeleteTtl: 600s
+                autoDeleteTtl: 1800s
+        result: create_operation
+    - get_create_operation:
+        call: http.get
+        args:
+          url: '$${dataproc_url + "/" + create_operation.body.name}'
+          auth:
+            type: OAuth2
+            scope: https://www.googleapis.com/auth/cloud-platform
+        result: create_status
+    - check_create_operation:
+        switch:
+          - condition: $${not("done" in create_status.body)}
+            next: wait_for_cluster
+          - condition: $${"error" in create_status.body}
+            next: create_failed
+          - condition: $${create_status.body.done == true}
+            next: run_spark_jobs
+    - wait_for_cluster:
+        call: sys.sleep
+        args:
+          seconds: 15
+        next: get_create_operation
+    - create_failed:
+        raise: $${create_status.body.error}
+    - run_spark_jobs:
+        try:
+          steps:
+            - submit_load:
+                call: http.post
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs:submit"}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                  body:
+                    job:
+                      placement:
+                        clusterName: $${cluster}
+                      pysparkJob:
+                        mainPythonFileUri: ${load_script_uri}
+                        args:
+                          - --source=${raw_csv_uri}
+                          - --expected-rows=${expected_rows}
+                          - --polaris-url=${polaris_url}
+                          - --polaris-secret=${polaris_secret}
+                result: load_job
+            - wait_for_load:
+                call: http.get
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs/" + load_job.body.reference.jobId}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                result: load_status
+            - check_load:
+                switch:
+                  - condition: $${load_status.body.status.state == "DONE"}
+                    next: load_complete
+                  - condition: $${load_status.body.status.state == "ERROR" or load_status.body.status.state == "CANCELLED"}
+                    next: load_failed
+            - wait_before_load_poll:
+                call: sys.sleep
+                args:
+                  seconds: 15
+                next: wait_for_load
+            - load_failed:
+                raise: $${load_status.body.status.details}
+            - load_complete:
+                assign:
+                  - load_job_id: $${load_status.body.reference.jobId}
+            - submit_transform:
+                call: http.post
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs:submit"}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                  body:
+                    job:
+                      placement:
+                        clusterName: $${cluster}
+                      pysparkJob:
+                        mainPythonFileUri: ${runner_script_uri}
+                        args:
+                          - --project-archive=${dbt_project_archive_uri}
+                          - --polaris-url=${polaris_url}
+                          - --polaris-secret=${polaris_secret}
+                          - --selector=+features
+                          - --verify-table=polaris.gold.features
+                          - --export-parquet=${feature_export_uri}
+                result: dbt_job
+            - wait_for_dbt:
+                call: http.get
+                args:
+                  url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/jobs/" + dbt_job.body.reference.jobId}'
+                  auth:
+                    type: OAuth2
+                    scope: https://www.googleapis.com/auth/cloud-platform
+                result: dbt_status
+            - check_dbt:
+                switch:
+                  - condition: $${dbt_status.body.status.state == "DONE"}
+                    next: dbt_complete
+                  - condition: $${dbt_status.body.status.state == "ERROR" or dbt_status.body.status.state == "CANCELLED"}
+                    next: dbt_failed
+            - wait_before_dbt_poll:
+                call: sys.sleep
+                args:
+                  seconds: 15
+                next: wait_for_dbt
+            - dbt_failed:
+                raise: $${dbt_status.body.status.details}
+            - dbt_complete:
+                assign:
+                  - dbt_job_id: $${dbt_status.body.reference.jobId}
+        except:
+          as: error
+          steps:
+            - capture_error:
+                assign:
+                  - job_error: $${error}
+    - delete_cluster:
+        call: http.delete
+        args:
+          url: '$${dataproc_url + "/projects/" + project + "/regions/" + region + "/clusters/" + cluster}'
+          auth:
+            type: OAuth2
+            scope: https://www.googleapis.com/auth/cloud-platform
+        result: delete_operation
+    - get_delete_operation:
+        call: http.get
+        args:
+          url: '$${dataproc_url + "/" + delete_operation.body.name}'
+          auth:
+            type: OAuth2
+            scope: https://www.googleapis.com/auth/cloud-platform
+        result: delete_status
+    - check_delete_operation:
+        switch:
+          - condition: $${not("done" in delete_status.body)}
+            next: wait_for_delete
+          - condition: $${"error" in delete_status.body}
+            next: delete_failed
+          - condition: $${delete_status.body.done == true}
+            next: finish_spark
+    - wait_for_delete:
+        call: sys.sleep
+        args:
+          seconds: 15
+        next: get_delete_operation
+    - delete_failed:
+        raise: $${delete_status.body.error}
+    - finish_spark:
+        switch:
+          - condition: $${job_error != null}
+            next: raise_error
+        next: run_train
+    - raise_error:
+        raise: $${job_error}
+    - run_train:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: projects/${project_id}/locations/${region}/jobs/${ml_job_name}
+    - bootstrap_superset:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: projects/${project_id}/locations/${region}/jobs/${superset_bootstrap_job_name}
+    - complete:
+        return:
+          loadJobId: $${load_job_id}
+          transformJobId: $${dbt_job_id}
+          clusterDeleted: true

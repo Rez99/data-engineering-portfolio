@@ -1,2 +1,0 @@
-pyiceberg[gcsfs,pyarrow]==0.10.0
-requests==2.32.5

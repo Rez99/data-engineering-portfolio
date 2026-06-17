@@ -7,6 +7,7 @@ terraform/*.tfstate.*
 terraform/*.tfvars
 terraform/*.tfplan
 terraform/dbt-project.zip
+deployment/manifest.json
 
 # Local cloud credentials must never be committed
 .credentials/
@@ -16,7 +17,8 @@ terraform/dbt-project.zip
 logs/
 
 # dbt build artifacts
-dbt/logs/
-dbt/target/
-dbt/dbt_packages/
+deployment/dbt/logs/
+deployment/dbt/target/
+deployment/dbt/dbt_packages/
+deployment/dbt/.user.yml
 dbt/.user.yml

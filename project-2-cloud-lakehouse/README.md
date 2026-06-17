@@ -11,19 +11,34 @@ See [PROJECT_2_SPEC.md](PROJECT_2_SPEC.md) for the delivery plan and
 
 ## Repository Structure
 
+The project is organized around a simple deployment lifecycle:
+
+```text
+terraform/      # Stage 1: PROVISION cloud resources
+bootstrap/      # Stage 2: INITIALIZE platform state
+deployment/     # Stage 3: PUBLISH deployable project artifacts
+run.sh          # Stage 4: RUN the deployed pipeline
+```
+
 ```text
 project-2-cloud-lakehouse/
-├── dbt/                  # dbt project adapted for Spark
+├── bootstrap/            # Stage 2: INITIALIZE platform state
+│   └── polaris/          # Polaris warehouse/catalog configuration
+├── deployment/           # Stage 3: PUBLISH deployable project artifacts
+│   ├── containers/       # Cloud Run image build contexts
+│   ├── dbt/              # dbt project adapted for Spark
+│   ├── spark/            # Spark job entrypoints uploaded to GCS
+│   ├── workflows/        # Google Cloud Workflows source definitions
+│   └── manifest.example.json
 ├── docs/                 # Architecture documentation and ADRs
-├── setup.sh              # Optional end-to-end development setup
-├── services/
-│   ├── ingestion/        # Clickstream sampling and ingestion Cloud Run Job
-│   ├── ml/               # XGBoost training and evaluation Cloud Run Job
-│   └── polaris/          # Polaris Cloud Run Service packaging and configuration
-├── terraform/            # GCP infrastructure as code
+├── run.sh                # Stage 4: RUN the deployed parent workflow
+├── setup.sh              # Optional end-to-end wrapper for all stages
+├── terraform/            # Stage 1: PROVISION cloud resources
 ├── tests/
-│   └── integration/      # Cross-service validation and smoke tests
-└── workflows/            # Google Cloud Workflows definitions
+│   ├── ingestion/        # Unit tests for ingestion code
+│   ├── integration/      # Cross-service validation and smoke tests
+│   └── ml/               # Unit tests for ML code
+└── destroy.sh            # Tear down Terraform-managed resources
 ```
 
 Implementation is added incrementally as each milestone provisions and
@@ -49,6 +64,12 @@ To destroy all Terraform-managed resources:
 
 ```bash
 ./destroy.sh
+```
+
+To trigger the deployed end-to-end pipeline without rebuilding or reprovisioning:
+
+```bash
+./run.sh
 ```
 
 Credential files, Terraform state, plans, and local variable files are ignored
@@ -107,7 +128,7 @@ docker buildx build \
   --target runtime \
   --tag us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/ingestion:dev-amd64 \
   --push \
-  services/ingestion
+  deployment/containers/ingestion
 ```
 
 6. Re-enter the Terraform container:

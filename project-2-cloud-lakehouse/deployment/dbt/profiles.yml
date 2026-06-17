@@ -1,0 +1,11 @@
+lakehouse:
+  target: parse
+
+  outputs:
+    parse:
+      type: spark
+      method: thrift
+      schema: silver
+      host: localhost
+      port: 10000
+      threads: 1

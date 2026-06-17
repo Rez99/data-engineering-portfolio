@@ -269,7 +269,7 @@ resource "google_workflows_workflow" "extract" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/extract.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/extract.yaml", {
     project_id = var.project_id
     region     = var.region
     job_name   = google_cloud_run_v2_job.ingestion.name
@@ -297,7 +297,7 @@ resource "google_workflows_workflow" "train" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/cloud_run_job.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/cloud_run_job.yaml", {
     project_id = var.project_id
     region     = var.region
     job_name   = google_cloud_run_v2_job.ml.name
@@ -325,7 +325,7 @@ resource "google_workflows_workflow" "pipeline" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/pipeline.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/pipeline.yaml", {
     project_id                  = var.project_id
     region                      = var.region
     cluster_name                = "lakehouse-spark-pipeline"
@@ -338,6 +338,7 @@ resource "google_workflows_workflow" "pipeline" {
     runner_script_uri           = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
     dbt_project_archive_uri     = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
     raw_csv_uri                 = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
+    expected_rows               = "1000000"
     polaris_url                 = google_cloud_run_v2_service.polaris.uri
     polaris_secret              = google_secret_manager_secret.polaris_root_client_secret.id
     feature_export_uri          = "gs://${google_storage_bucket.validation.name}/ml/features/"
@@ -766,14 +767,14 @@ resource "google_secret_manager_secret_iam_member" "spark_polaris_secret_accesso
 resource "google_storage_bucket_object" "load_events" {
   name   = "spark/load_events.py"
   bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../services/spark/load_events.py"
+  source = "${path.module}/../deployment/spark/load_events.py"
 
   depends_on = [google_project_service.required]
 }
 
 data "archive_file" "dbt_project" {
   type        = "zip"
-  source_dir  = "${path.module}/../dbt"
+  source_dir  = "${path.module}/../deployment/dbt"
   output_path = "${path.module}/dbt-project.zip"
 
   excludes = [
@@ -794,7 +795,7 @@ resource "google_storage_bucket_object" "dbt_project" {
 resource "google_storage_bucket_object" "run_dbt" {
   name   = "spark/run_dbt.py"
   bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../services/spark/run_dbt.py"
+  source = "${path.module}/../deployment/spark/run_dbt.py"
 
   depends_on = [google_project_service.required]
 }
@@ -807,7 +808,7 @@ resource "google_workflows_workflow" "load" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/load.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/load.yaml", {
     project_id            = var.project_id
     region                = var.region
     cluster_name          = "lakehouse-spark-load"
@@ -815,6 +816,7 @@ resource "google_workflows_workflow" "load" {
     staging_bucket        = google_storage_bucket.validation.name
     load_script_uri       = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
     raw_csv_uri           = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
+    expected_rows         = "1000000"
     polaris_url           = google_cloud_run_v2_service.polaris.uri
     polaris_secret        = google_secret_manager_secret.polaris_root_client_secret.id
   })
@@ -840,7 +842,7 @@ resource "google_workflows_workflow" "dbt_smoke" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/dbt_run.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/dbt_run.yaml", {
     project_id              = var.project_id
     region                  = var.region
     cluster_name            = "lakehouse-spark-dbt-smoke"
@@ -878,7 +880,7 @@ resource "google_workflows_workflow" "transform" {
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../workflows/dbt_run.yaml", {
+  source_contents = templatefile("${path.module}/../deployment/workflows/dbt_run.yaml", {
     project_id              = var.project_id
     region                  = var.region
     cluster_name            = "lakehouse-spark-transform"
