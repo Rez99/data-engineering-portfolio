@@ -18,6 +18,7 @@ main:
             projectId: $${project}
             clusterName: $${cluster}
             config:
+              configBucket: ${staging_bucket}
               tempBucket: ${staging_bucket}
               gceClusterConfig:
                 internalIpOnly: false

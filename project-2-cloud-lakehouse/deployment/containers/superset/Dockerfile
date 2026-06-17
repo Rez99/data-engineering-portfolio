@@ -16,4 +16,4 @@ USER superset
 
 ENV SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py
 
-CMD ["/bin/bash", "-c", "(while true; do python /app/pythonpath/init_metrics.py || echo 'Model metrics are not available yet; retrying later.'; sleep ${METRICS_REFRESH_SECONDS:-60}; done) & exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 --worker-class gthread --threads 20 --timeout 120 'superset.app:create_app()'"]
+CMD ["/bin/bash", "-c", "until python /app/pythonpath/init_metrics.py; do echo 'Model metrics are not available yet; retrying in 30 seconds.'; sleep 30; done; exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 --worker-class gthread --threads 20 --timeout 120 'superset.app:create_app()'"]

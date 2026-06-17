@@ -112,7 +112,7 @@ terraform_output() {
 }
 
 cleanup() {
-  docker rm --force "${TERRAFORM_CONTAINER}" >/dev/null 2>&1 || true
+  docker rm --force "${TERRAFORM_CONTAINER}" || true
 }
 
 gcloud_cmd() {
@@ -170,7 +170,7 @@ docker run --detach \
   -c "sleep infinity" >/dev/null
 
 printf '🟢 Terraform: Provision GCP resources\n'
-run_terraform /workspace/terraform init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform init -input=false
 run_terraform /workspace/terraform apply \
   -json \
   -input=false \
@@ -189,7 +189,7 @@ fi
 
 printf '🟢 Terraform: Configure Polaris catalog\n'
 POLARIS_URL="$(get_polaris_url)"
-run_terraform /workspace/terraform-polaris init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform-polaris init -input=false
 run_terraform /workspace/terraform-polaris apply \
   -json \
   -input=false \
@@ -208,7 +208,7 @@ printf '%s' "${access_token}" |
   docker login \
     --username oauth2accesstoken \
     --password-stdin \
-    "${REGISTRY_HOST}" >/dev/null 2>&1
+    "${REGISTRY_HOST}"
 
 printf '   - Docker: Build and push ingestion image\n'
 docker buildx build \
@@ -217,7 +217,7 @@ docker buildx build \
   --target runtime \
   --tag "${INGESTION_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/deployment/containers/ingestion" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/ingestion"
 
 printf '   - Docker: Build and push ML image\n'
 docker buildx build \
@@ -226,7 +226,7 @@ docker buildx build \
   --target runtime \
   --tag "${ML_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/deployment/containers/ml" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/ml"
 
 printf '   - Docker: Build and push Superset image\n'
 docker buildx build \
@@ -234,7 +234,7 @@ docker buildx build \
   --provenance=false \
   --tag "${SUPERSET_IMAGE}" \
   --push \
-  "${PROJECT_DIR}/deployment/containers/superset" >/dev/null 2>&1
+  "${PROJECT_DIR}/deployment/containers/superset"
 
 printf '🟢 Terraform: Update Cloud Run Job deployments\n'
 run_terraform /workspace/terraform apply \
@@ -254,7 +254,7 @@ env \
 
 printf '🟢 Terraform: Configure Superset assets\n'
 SUPERSET_URL="$(terraform_output /workspace/terraform -raw superset_service_url)"
-run_terraform /workspace/terraform-superset init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform-superset init -input=false
 run_terraform /workspace/terraform-superset apply \
   -json \
   -input=false \
@@ -263,6 +263,6 @@ run_terraform /workspace/terraform-superset apply \
   -var="superset_password=${SUPERSET_ADMIN_PASSWORD}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
 
 printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
-"${PROJECT_DIR}/run.sh" >/dev/null 2>&1
+"${PROJECT_DIR}/run.sh"
 
 printf '🟢 Setup complete\n'
