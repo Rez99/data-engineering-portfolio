@@ -207,10 +207,10 @@ main:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
           name: projects/${project_id}/locations/${region}/jobs/${ml_job_name}
-    - bootstrap_superset:
-        call: googleapis.run.v2.projects.locations.jobs.run
+    - refresh_superset_reporting:
+        call: http.get
         args:
-          name: projects/${project_id}/locations/${region}/jobs/${superset_bootstrap_job_name}
+          url: "${superset_service_url}/health"
     - complete:
         return:
           loadJobId: $${load_job_id}

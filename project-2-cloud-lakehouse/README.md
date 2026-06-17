@@ -16,6 +16,8 @@ The project is organized around a simple deployment lifecycle:
 ```text
 terraform/      # Stage 1: PROVISION cloud resources
 bootstrap/      # Stage 2: INITIALIZE platform state
+terraform-polaris/ # Stage 2b: MANAGE Polaris catalog state in Terraform
+terraform-superset/ # Stage 2c: MANAGE Superset assets in Terraform
 deployment/     # Stage 3: PUBLISH deployable project artifacts
 run.sh          # Stage 4: RUN the deployed pipeline
 ```
@@ -23,7 +25,9 @@ run.sh          # Stage 4: RUN the deployed pipeline
 ```text
 project-2-cloud-lakehouse/
 ├── bootstrap/            # Stage 2: INITIALIZE platform state
-│   └── polaris/          # Polaris warehouse/catalog configuration
+│   ├── polaris/          # Execute minimal Polaris realm/root bootstrap
+│   ├── superset/         # Execute minimal Superset metadata/admin bootstrap
+│   └── README.md         # Minimal bootstrap boundary
 ├── deployment/           # Stage 3: PUBLISH deployable project artifacts
 │   ├── containers/       # Cloud Run image build contexts
 │   ├── dbt/              # dbt project adapted for Spark
@@ -34,6 +38,8 @@ project-2-cloud-lakehouse/
 ├── run.sh                # Stage 4: RUN the deployed parent workflow
 ├── setup.sh              # Optional end-to-end wrapper for all stages
 ├── terraform/            # Stage 1: PROVISION cloud resources
+├── terraform-polaris/    # Stage 2b: MANAGE Polaris catalog state
+├── terraform-superset/   # Stage 2c: MANAGE Superset dashboards/charts/datasets
 ├── tests/
 │   ├── ingestion/        # Unit tests for ingestion code
 │   ├── integration/      # Cross-service validation and smoke tests
@@ -159,14 +165,8 @@ docker run --rm -it \
 
 
 
-9. Bootsrap Polaris
+9. Bootstrap Polaris:
+
 ```bash
-docker run --rm -it \
-  -v "$PWD/.credentials/gcloud:/config" \
-  -e CLOUDSDK_CONFIG=/config \
-  gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable \
-  gcloud run jobs execute lakehouse-polaris-bootstrap \
-  --region=us-central1 \
-  --project=rez-cloud-lakehouse \
-  --wait
-  ```
+bootstrap/polaris/run.sh
+```

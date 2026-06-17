@@ -11,7 +11,9 @@ readonly ADC_FILE="${GCLOUD_CONFIG}/application_default_credentials.json"
 readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
 readonly LOG_DIR="${PROJECT_DIR}/logs"
 readonly TERRAFORM_APPLY_1_LOG="${LOG_DIR}/terraform-apply-1-foundation.jsonl"
+readonly TERRAFORM_POLARIS_LOG="${LOG_DIR}/terraform-apply-polaris.jsonl"
 readonly TERRAFORM_APPLY_2_LOG="${LOG_DIR}/terraform-apply-2-images.jsonl"
+readonly TERRAFORM_SUPERSET_LOG="${LOG_DIR}/terraform-apply-superset.jsonl"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
@@ -20,6 +22,7 @@ readonly ML_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/ml:dev-amd64"
 readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/superset:dev-amd64"
 readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
+readonly SUPERSET_BOOTSTRAP_JOB="lakehouse-superset-bootstrap"
 readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
 readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
 readonly POLARIS_REALM="POLARIS"
@@ -88,6 +91,26 @@ export TF_VAR_superset_database_password="${SUPERSET_DATABASE_PASSWORD}"
 export TF_VAR_superset_secret_key="${SUPERSET_SECRET_KEY}"
 export TF_VAR_superset_admin_password="${SUPERSET_ADMIN_PASSWORD}"
 
+run_terraform() {
+  local workdir="$1"
+  shift
+
+  docker exec \
+    --workdir "${workdir}" \
+    "${TERRAFORM_CONTAINER}" \
+    terraform "$@"
+}
+
+terraform_output() {
+  local workdir="$1"
+  shift
+
+  docker exec \
+    --workdir "${workdir}" \
+    "${TERRAFORM_CONTAINER}" \
+    terraform output "$@"
+}
+
 cleanup() {
   docker rm --force "${TERRAFORM_CONTAINER}" >/dev/null 2>&1 || true
 }
@@ -147,8 +170,8 @@ docker run --detach \
   -c "sleep infinity" >/dev/null
 
 printf '🟢 Terraform: Provision GCP resources\n'
-docker exec "${TERRAFORM_CONTAINER}" terraform init -input=false >/dev/null 2>&1
-docker exec "${TERRAFORM_CONTAINER}" terraform apply \
+run_terraform /workspace/terraform init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform apply \
   -json \
   -input=false \
   -auto-approve >"${TERRAFORM_APPLY_1_LOG}" 2>&1
@@ -157,11 +180,24 @@ printf '🟢 Polaris: Bootstrap realm and root credentials\n'
 if polaris_root_auth_ready; then
   printf '   - Polaris: Root credentials already work; skipping bootstrap\n'
 else
-  gcloud_cmd run jobs execute "${POLARIS_BOOTSTRAP_JOB}" \
-    --region="${REGION}" \
-    --project="${PROJECT_ID}" \
-    --wait >/dev/null
+  env \
+    PROJECT_ID="${PROJECT_ID}" \
+    REGION="${REGION}" \
+    POLARIS_BOOTSTRAP_JOB="${POLARIS_BOOTSTRAP_JOB}" \
+    "${PROJECT_DIR}/bootstrap/polaris/run.sh" >/dev/null
 fi
+
+printf '🟢 Terraform: Configure Polaris catalog\n'
+POLARIS_URL="$(get_polaris_url)"
+run_terraform /workspace/terraform-polaris init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform-polaris apply \
+  -json \
+  -input=false \
+  -auto-approve \
+  -var="polaris_base_url=${POLARIS_URL}" \
+  -var="polaris_root_client_secret=${POLARIS_ROOT_CLIENT_SECRET}" \
+  -var="warehouse_location=${POLARIS_WAREHOUSE}" \
+  -var="gcs_service_account=${POLARIS_SERVICE_ACCOUNT}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
 
 printf '🟢 Docker: Build and push application images\n'
 printf '   - GCloud: Request Artifact Registry access token\n'
@@ -201,7 +237,7 @@ docker buildx build \
   "${PROJECT_DIR}/deployment/containers/superset" >/dev/null 2>&1
 
 printf '🟢 Terraform: Update Cloud Run Job deployments\n'
-docker exec "${TERRAFORM_CONTAINER}" terraform apply \
+run_terraform /workspace/terraform apply \
   -json \
   -input=false \
   -auto-approve \
@@ -209,25 +245,22 @@ docker exec "${TERRAFORM_CONTAINER}" terraform apply \
   -var="ml_image=${ML_IMAGE}" \
   -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_2_LOG}" 2>&1
 
-printf '🟢 Polaris: Configure and verify Iceberg warehouse\n'
-POLARIS_URL="$(
-  get_polaris_url
-)"
-CLOUD_RUN_IDENTITY_TOKEN="$(get_cloud_run_identity_token)"
-export POLARIS_URL
-export CLOUD_RUN_IDENTITY_TOKEN
+printf '🟢 Superset: Bootstrap metadata and admin user\n'
+env \
+  PROJECT_ID="${PROJECT_ID}" \
+  REGION="${REGION}" \
+  SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
+  "${PROJECT_DIR}/bootstrap/superset/run.sh" >/dev/null
 
-docker run --rm \
-  --volume "${PROJECT_DIR}/bootstrap/polaris:/app:ro" \
-  --workdir /app \
-  --env POLARIS_URL \
-  --env CLOUD_RUN_IDENTITY_TOKEN \
-  --env POLARIS_ROOT_CLIENT_SECRET \
-  --env POLARIS_WAREHOUSE="${POLARIS_WAREHOUSE}" \
-  --env POLARIS_GCS_SERVICE_ACCOUNT="${POLARIS_SERVICE_ACCOUNT}" \
-  python:3.12-slim \
-  sh -c \
-  'pip install --quiet --root-user-action=ignore --disable-pip-version-check --no-cache-dir -r requirements.txt && python configure.py'
+printf '🟢 Terraform: Configure Superset assets\n'
+SUPERSET_URL="$(terraform_output /workspace/terraform -raw superset_service_url)"
+run_terraform /workspace/terraform-superset init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform-superset apply \
+  -json \
+  -input=false \
+  -auto-approve \
+  -var="superset_endpoint=${SUPERSET_URL}" \
+  -var="superset_password=${SUPERSET_ADMIN_PASSWORD}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
 
 printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
 "${PROJECT_DIR}/run.sh" >/dev/null 2>&1

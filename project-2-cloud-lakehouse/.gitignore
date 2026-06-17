@@ -7,6 +7,16 @@ terraform/*.tfstate.*
 terraform/*.tfvars
 terraform/*.tfplan
 terraform/dbt-project.zip
+terraform-polaris/.terraform/
+terraform-polaris/*.tfstate
+terraform-polaris/*.tfstate.*
+terraform-polaris/*.tfvars
+terraform-polaris/*.tfplan
+terraform-superset/.terraform/
+terraform-superset/*.tfstate
+terraform-superset/*.tfstate.*
+terraform-superset/*.tfvars
+terraform-superset/*.tfplan
 deployment/manifest.json
 
 # Local cloud credentials must never be committed

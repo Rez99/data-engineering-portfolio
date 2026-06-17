@@ -326,22 +326,22 @@ resource "google_workflows_workflow" "pipeline" {
   deletion_protection = false
 
   source_contents = templatefile("${path.module}/../deployment/workflows/pipeline.yaml", {
-    project_id                  = var.project_id
-    region                      = var.region
-    cluster_name                = "lakehouse-spark-pipeline"
-    ingestion_job_name          = google_cloud_run_v2_job.ingestion.name
-    ml_job_name                 = google_cloud_run_v2_job.ml.name
-    superset_bootstrap_job_name = google_cloud_run_v2_job.superset_bootstrap.name
-    spark_service_account       = google_service_account.spark.email
-    staging_bucket              = google_storage_bucket.validation.name
-    load_script_uri             = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
-    runner_script_uri           = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
-    dbt_project_archive_uri     = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
-    raw_csv_uri                 = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
-    expected_rows               = "1000000"
-    polaris_url                 = google_cloud_run_v2_service.polaris.uri
-    polaris_secret              = google_secret_manager_secret.polaris_root_client_secret.id
-    feature_export_uri          = "gs://${google_storage_bucket.validation.name}/ml/features/"
+    project_id              = var.project_id
+    region                  = var.region
+    cluster_name            = "lakehouse-spark-pipeline"
+    ingestion_job_name      = google_cloud_run_v2_job.ingestion.name
+    ml_job_name             = google_cloud_run_v2_job.ml.name
+    superset_service_url    = google_cloud_run_v2_service.superset.uri
+    spark_service_account   = google_service_account.spark.email
+    staging_bucket          = google_storage_bucket.validation.name
+    load_script_uri         = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
+    runner_script_uri       = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
+    dbt_project_archive_uri = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
+    raw_csv_uri             = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
+    expected_rows           = "1000000"
+    polaris_url             = google_cloud_run_v2_service.polaris.uri
+    polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
+    feature_export_uri      = "gs://${google_storage_bucket.validation.name}/ml/features/"
   })
 
   labels = {
@@ -353,7 +353,6 @@ resource "google_workflows_workflow" "pipeline" {
   depends_on = [
     google_cloud_run_v2_job_iam_member.workflow_ingestion_invoker,
     google_cloud_run_v2_job_iam_member.workflow_ml_invoker,
-    google_cloud_run_v2_job_iam_member.workflow_superset_bootstrap_invoker,
     google_project_iam_member.workflow_dataproc_editor,
     google_project_iam_member.workflow_run_viewer,
     google_project_service.required,
@@ -494,7 +493,6 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
         command = ["/bin/bash", "-c"]
         args = [<<-EOT
           set -e
-          python /app/pythonpath/init_metrics.py
           superset db upgrade
           if ! superset fab list-users | grep -q "${var.superset_admin_username}"; then
             superset fab create-admin \
@@ -504,11 +502,7 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
               --email "admin@example.com" \
               --password "${var.superset_admin_password}"
           fi
-          superset fab reset-password \
-            --username "${var.superset_admin_username}" \
-            --password "${var.superset_admin_password}"
           superset init
-          superset import-directory /app/pythonpath/assets --overwrite
         EOT
         ]
 
@@ -555,14 +549,6 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
     google_sql_database.superset,
     google_sql_user.superset,
   ]
-}
-
-resource "google_cloud_run_v2_job_iam_member" "workflow_superset_bootstrap_invoker" {
-  project  = google_cloud_run_v2_job.superset_bootstrap.project
-  location = google_cloud_run_v2_job.superset_bootstrap.location
-  name     = google_cloud_run_v2_job.superset_bootstrap.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
 resource "google_cloud_run_v2_service" "superset" {
@@ -721,6 +707,14 @@ resource "google_cloud_run_v2_service_iam_member" "spark_polaris_invoker" {
   name     = google_cloud_run_v2_service.polaris.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.spark.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "polaris_public" {
+  project  = google_cloud_run_v2_service.polaris.project
+  location = google_cloud_run_v2_service.polaris.location
+  name     = google_cloud_run_v2_service.polaris.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }
 
 resource "google_project_iam_member" "dataproc_operator" {
