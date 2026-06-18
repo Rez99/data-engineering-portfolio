@@ -162,3 +162,60 @@ bootstrap/superset/run.sh
 ```bash
 ./run.sh
 ```
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Host
+    box Docker
+    participant Terraform@{ "type" : "collections" }
+    participant GCloud@{ "type" : "collections" }
+    end
+
+    participant GCP
+    
+    rect rgb(235,245,255)
+    Note over Host,GCP: Infrastructure Provisioning
+    Host->>Terraform: docker run
+    Terraform->>Terraform: Init
+    Terraform->>GCP: Provision Artifact Registry
+    Host->>GCloud: docker run
+    GCloud-->>GCP: Request Access Token
+    GCP-->>Host: Receive Access Token
+    Host->>GCP: Build & Push Superset Image
+    Terraform->>GCP: Provision Remaining Resources
+    end
+
+    rect rgb(235,255,235)
+    Note over Host,GCP: Platform Initialization
+    Host->>GCloud: docker run
+    GCloud-->>GCP: Polaris Bootsrap
+    GCP->>GCP: Cloud Run Job
+    Host->>Terraform: docker run
+    Terraform->>Terraform: Init
+    Terraform->>GCP: Provision Polaris Catalog
+    Host->>GCloud: docker run
+    GCloud-->>GCP: Superset Bootsrap
+    GCP->>GCP: Cloud Run Job
+    end
+
+    rect rgb(255,248,235)
+    Note over Host,GCP: Pipeline Execution
+    Host->>GCloud: docker run
+    GCloud-->>GCP: Start Pipeline
+    GCP->>GCP: Spark Jobs
+    end 
+
+    rect rgb(255,235,245)
+    Note over Host,GCP: Consumption Configuration
+    Host->>GCloud: docker run
+    GCloud-->>GCP: Refresh Superset Metics
+    GCP->>GCP: Cloud Run Job
+    Host->>Terraform: docker run
+    Terraform->>Terraform: Init
+    Terraform->>GCP: Provision Superset Assets
+    end
+```
+
+
