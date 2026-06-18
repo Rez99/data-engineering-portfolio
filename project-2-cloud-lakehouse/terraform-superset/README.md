@@ -20,8 +20,7 @@ From the Terraform container:
 ```bash
 terraform -chdir=/workspace/terraform-superset init
 terraform -chdir=/workspace/terraform-superset apply \
-  -var="superset_endpoint=${SUPERSET_URL}" \
-  -var="superset_password=${SUPERSET_ADMIN_PASSWORD}"
+  -var="superset_endpoint=${SUPERSET_URL}"
 ```
 
 `SUPERSET_URL` is the `superset_service_url` output from `../terraform/`.
@@ -47,4 +46,3 @@ terraform import superset_dashboard.xgboost_model_evaluation <dashboard_id>
 ```
 
 The numeric IDs are visible in the Superset UI URLs or via the Superset REST API.
-

@@ -6,32 +6,14 @@ readonly PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly TERRAFORM_CONTAINER="lakehouse-terraform-destroy"
 readonly TERRAFORM_IMAGE="hashicorp/terraform:1.15.6"
 readonly ADC_FILE="${PROJECT_DIR}/.credentials/gcloud/application_default_credentials.json"
-readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
 
+# Validate local prerequisites.
 if [[ ! -f "${ADC_FILE}" ]]; then
   printf 'Missing Google Cloud credentials: %s\n' "${ADC_FILE}" >&2
   exit 1
 fi
 
-if [[ ! -f "${SETUP_ENV}" ]]; then
-  printf 'Missing generated setup credentials: %s\n' "${SETUP_ENV}" >&2
-  printf 'Run ./setup.sh before destroying the environment.\n' >&2
-  exit 1
-fi
-
-set -a
-# shellcheck source=/dev/null
-source "${SETUP_ENV}"
-set +a
-
-SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-admin}"
-
-export TF_VAR_polaris_database_password="${POLARIS_DATABASE_PASSWORD}"
-export TF_VAR_polaris_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET}"
-export TF_VAR_superset_database_password="${SUPERSET_DATABASE_PASSWORD}"
-export TF_VAR_superset_secret_key="${SUPERSET_SECRET_KEY}"
-export TF_VAR_superset_admin_password="${SUPERSET_ADMIN_PASSWORD}"
-
+# Small wrappers keep the teardown flow readable.
 run_terraform() {
   local workdir="$1"
   shift
@@ -91,11 +73,6 @@ docker run --detach \
   --volume "${PROJECT_DIR}:/workspace" \
   --volume "${ADC_FILE}:/credentials/gcp.json:ro" \
   --env GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
-  --env TF_VAR_polaris_database_password \
-  --env TF_VAR_polaris_root_client_secret \
-  --env TF_VAR_superset_database_password \
-  --env TF_VAR_superset_secret_key \
-  --env TF_VAR_superset_admin_password \
   --workdir /workspace/terraform \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null
@@ -125,8 +102,7 @@ if [[ -n "${SUPERSET_URL}" ]]; then
   run_terraform \
     /workspace/terraform-superset \
     destroy \
-    -var="superset_endpoint=${SUPERSET_URL}" \
-    -var="superset_password=${SUPERSET_ADMIN_PASSWORD}"
+    -var="superset_endpoint=${SUPERSET_URL}"
 else
   printf '\n🟡 Superset: No service URL found; skipping configuration destroy\n'
 fi

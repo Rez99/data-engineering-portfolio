@@ -18,6 +18,7 @@ variable "polaris_root_client_id" {
 variable "polaris_root_client_secret" {
   description = "Root client secret created by the minimal Polaris bootstrap job."
   type        = string
+  default     = "polaris_root"
   sensitive   = true
 }
 
@@ -30,11 +31,13 @@ variable "catalog_name" {
 variable "warehouse_location" {
   description = "GCS base location for the Polaris-backed Iceberg warehouse."
   type        = string
+  default     = "gs://rez-cloud-lakehouse-validation/warehouse/"
 }
 
 variable "gcs_service_account" {
   description = "Service account Polaris should use for GCS table storage."
   type        = string
+  default     = "lakehouse-polaris@rez-cloud-lakehouse.iam.gserviceaccount.com"
 }
 
 variable "namespace" {

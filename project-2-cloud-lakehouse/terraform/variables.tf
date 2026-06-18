@@ -25,12 +25,14 @@ variable "superset_image" {
 variable "superset_database_password" {
   description = "PostgreSQL password used by Superset."
   type        = string
+  default     = "superset_pass"
   sensitive   = true
 }
 
 variable "superset_secret_key" {
   description = "Secret key used to sign Superset sessions."
   type        = string
+  default     = "superset_secret_key_for_demo_only"
   sensitive   = true
 }
 
@@ -78,8 +80,9 @@ variable "polaris_database_user" {
 }
 
 variable "polaris_database_password" {
-  description = "PostgreSQL password used by Polaris. Supply this with a tfvars file or -var."
+  description = "PostgreSQL password used by Polaris."
   type        = string
+  default     = "polaris_pass"
   sensitive   = true
 }
 
@@ -96,8 +99,9 @@ variable "polaris_root_client_id" {
 }
 
 variable "polaris_root_client_secret" {
-  description = "Root client secret created during Polaris bootstrap. Supply this with a tfvars file or -var."
+  description = "Root client secret created during Polaris bootstrap."
   type        = string
+  default     = "polaris_root"
   sensitive   = true
 }
 

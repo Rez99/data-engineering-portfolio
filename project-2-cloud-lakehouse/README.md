@@ -105,9 +105,7 @@ docker exec -it lakehouse-terraform /bin/sh
 ```bash
 terraform init
 terraform apply \
-  -target=google_artifact_registry_repository.pipeline \
-  -var="polaris_database_password=$(sed -n 's/^POLARIS_DATABASE_PASSWORD=//p' /workspace/.credentials/setup.env)" \
-  -var="polaris_root_client_secret=$(sed -n 's/^POLARIS_ROOT_CLIENT_SECRET=//p' /workspace/.credentials/setup.env)"
+  -target=google_artifact_registry_repository.pipeline
 ```
 
 4. Exit the Terraform container and authenticate Docker with Artifact Registry:
@@ -147,9 +145,7 @@ docker exec -it lakehouse-terraform /bin/sh
 
 ```bash
 terraform apply \
-  -var='superset_image=us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/superset:dev-amd64' \
-  -var="polaris_database_password=$(sed -n 's/^POLARIS_DATABASE_PASSWORD=//p' /workspace/.credentials/setup.env)" \
-  -var="polaris_root_client_secret=$(sed -n 's/^POLARIS_ROOT_CLIENT_SECRET=//p' /workspace/.credentials/setup.env)"
+  -var='superset_image=us-central1-docker.pkg.dev/rez-cloud-lakehouse/pipeline/superset:dev-amd64'
 ```
 
 8. Bootstrap Polaris and Superset, then configure their managed assets:

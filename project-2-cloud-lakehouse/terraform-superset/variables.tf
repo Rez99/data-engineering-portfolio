@@ -12,6 +12,6 @@ variable "superset_username" {
 variable "superset_password" {
   description = "Superset administrator password used by the provider."
   type        = string
+  default     = "admin"
   sensitive   = true
 }
-

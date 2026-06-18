@@ -8,7 +8,6 @@ readonly TERRAFORM_IMAGE="hashicorp/terraform:1.15.6"
 readonly GCLOUD_IMAGE="gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable"
 readonly GCLOUD_CONFIG="${PROJECT_DIR}/.credentials/gcloud"
 readonly ADC_FILE="${GCLOUD_CONFIG}/application_default_credentials.json"
-readonly SETUP_ENV="${PROJECT_DIR}/.credentials/setup.env"
 readonly LOG_DIR="${PROJECT_DIR}/logs"
 readonly TERRAFORM_ARTIFACT_REGISTRY_LOG="${LOG_DIR}/terraform-apply-artifact-registry.jsonl"
 readonly TERRAFORM_APPLY_LOG="${LOG_DIR}/terraform-apply-full.jsonl"
@@ -23,75 +22,24 @@ readonly POLARIS_SERVICE="lakehouse-polaris"
 readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
 readonly SUPERSET_SERVICE="lakehouse-superset"
 readonly SUPERSET_BOOTSTRAP_JOB="lakehouse-superset-bootstrap"
-readonly POLARIS_WAREHOUSE="gs://${PROJECT_ID}-validation/warehouse/"
-readonly POLARIS_SERVICE_ACCOUNT="lakehouse-polaris@${PROJECT_ID}.iam.gserviceaccount.com"
 readonly POLARIS_REALM="POLARIS"
 readonly POLARIS_ROOT_CLIENT_ID="admin"
 readonly PIPELINE_SUCCESS_SENTINEL="gs://${PROJECT_ID}-validation/ml/xgboost_conversion/metrics/metrics.parquet"
+readonly SUPERSET_ADMIN_USERNAME="admin"
+readonly SUPERSET_ADMIN_PASSWORD="admin"
 
+# Internal Polaris client secret used only for readiness checks and catalog setup.
+readonly POLARIS_ROOT_CLIENT_SECRET="polaris_root"
+
+# Validate local prerequisites.
 if [[ ! -f "${ADC_FILE}" ]]; then
   printf 'Missing Google Cloud credentials: %s\n' "${ADC_FILE}" >&2
   exit 1
 fi
 
-provided_database_password="${POLARIS_DATABASE_PASSWORD:-}"
-provided_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET:-}"
-provided_superset_database_password="${SUPERSET_DATABASE_PASSWORD:-}"
-provided_superset_secret_key="${SUPERSET_SECRET_KEY:-}"
-
-unset POLARIS_DATABASE_PASSWORD POLARIS_ROOT_CLIENT_SECRET
-unset SUPERSET_DATABASE_PASSWORD SUPERSET_SECRET_KEY SUPERSET_ADMIN_PASSWORD
-
-umask 077
-mkdir -p "$(dirname "${SETUP_ENV}")"
 mkdir -p "${LOG_DIR}"
 
-if [[ -f "${SETUP_ENV}" ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "${SETUP_ENV}"
-  set +a
-else
-  touch "${SETUP_ENV}"
-fi
-
-if [[ -z "${POLARIS_DATABASE_PASSWORD:-}" ]]; then
-  POLARIS_DATABASE_PASSWORD="$(openssl rand -hex 24)"
-  printf 'POLARIS_DATABASE_PASSWORD=%s\n' "${POLARIS_DATABASE_PASSWORD}" >>"${SETUP_ENV}"
-fi
-
-if [[ -z "${POLARIS_ROOT_CLIENT_SECRET:-}" ]]; then
-  POLARIS_ROOT_CLIENT_SECRET="$(openssl rand -hex 32)"
-  printf 'POLARIS_ROOT_CLIENT_SECRET=%s\n' "${POLARIS_ROOT_CLIENT_SECRET}" >>"${SETUP_ENV}"
-fi
-
-if [[ -z "${SUPERSET_DATABASE_PASSWORD:-}" ]]; then
-  SUPERSET_DATABASE_PASSWORD="$(openssl rand -hex 24)"
-  printf 'SUPERSET_DATABASE_PASSWORD=%s\n' "${SUPERSET_DATABASE_PASSWORD}" >>"${SETUP_ENV}"
-fi
-
-if [[ -z "${SUPERSET_SECRET_KEY:-}" ]]; then
-  SUPERSET_SECRET_KEY="$(openssl rand -hex 32)"
-  printf 'SUPERSET_SECRET_KEY=%s\n' "${SUPERSET_SECRET_KEY}" >>"${SETUP_ENV}"
-fi
-
-POLARIS_DATABASE_PASSWORD="${provided_database_password:-${POLARIS_DATABASE_PASSWORD}}"
-POLARIS_ROOT_CLIENT_SECRET="${provided_root_client_secret:-${POLARIS_ROOT_CLIENT_SECRET}}"
-SUPERSET_DATABASE_PASSWORD="${provided_superset_database_password:-${SUPERSET_DATABASE_PASSWORD}}"
-SUPERSET_SECRET_KEY="${provided_superset_secret_key:-${SUPERSET_SECRET_KEY}}"
-SUPERSET_ADMIN_PASSWORD="admin"
-
-export POLARIS_DATABASE_PASSWORD
-export POLARIS_ROOT_CLIENT_SECRET
-export SUPERSET_DATABASE_PASSWORD
-export SUPERSET_SECRET_KEY
-export SUPERSET_ADMIN_PASSWORD
-export TF_VAR_polaris_database_password="${POLARIS_DATABASE_PASSWORD}"
-export TF_VAR_polaris_root_client_secret="${POLARIS_ROOT_CLIENT_SECRET}"
-export TF_VAR_superset_database_password="${SUPERSET_DATABASE_PASSWORD}"
-export TF_VAR_superset_secret_key="${SUPERSET_SECRET_KEY}"
-export TF_VAR_superset_admin_password="${SUPERSET_ADMIN_PASSWORD}"
-
+# Small wrappers keep the orchestration below readable.
 run_terraform() {
   local workdir="$1"
   shift
@@ -174,6 +122,7 @@ polaris_root_auth_ready() {
 trap cleanup EXIT
 cleanup
 
+# Stage 1: provision the registry early so Docker can push the Superset image.
 printf '🟢 Terraform: Start container\n'
 docker run --detach \
   --name "${TERRAFORM_CONTAINER}" \
@@ -181,11 +130,6 @@ docker run --detach \
   --volume "${PROJECT_DIR}:/workspace" \
   --volume "${ADC_FILE}:/credentials/gcp.json:ro" \
   --env GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
-  --env TF_VAR_polaris_database_password \
-  --env TF_VAR_polaris_root_client_secret \
-  --env TF_VAR_superset_database_password \
-  --env TF_VAR_superset_secret_key \
-  --env TF_VAR_superset_admin_password \
   --workdir /workspace/terraform \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null
@@ -217,6 +161,7 @@ docker buildx build \
   --push \
   "${PROJECT_DIR}/deployment/containers/superset"
 
+# Stage 2: provision the cloud platform and deploy project artifacts.
 printf '🟢 Terraform: Provision GCP resources\n'
 run_terraform /workspace/terraform apply \
   -json \
@@ -224,6 +169,7 @@ run_terraform /workspace/terraform apply \
   -auto-approve \
   -var="superset_image=${SUPERSET_IMAGE}" >"${TERRAFORM_APPLY_LOG}"
 
+# Stage 3: initialize and configure platform state.
 printf '🟢 Polaris: Bootstrap realm and root credentials\n'
 if polaris_root_auth_ready; then
   printf '   - Polaris: Root credentials already work; skipping bootstrap\n'
@@ -237,15 +183,12 @@ fi
 
 printf '🟢 Terraform: Configure Polaris catalog\n'
 POLARIS_URL="$(get_polaris_url)"
-run_terraform /workspace/terraform-polaris init -input=false
+run_terraform /workspace/terraform-polaris init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
 run_terraform /workspace/terraform-polaris apply \
   -json \
   -input=false \
   -auto-approve \
-  -var="polaris_base_url=${POLARIS_URL}" \
-  -var="polaris_root_client_secret=${POLARIS_ROOT_CLIENT_SECRET}" \
-  -var="warehouse_location=${POLARIS_WAREHOUSE}" \
-  -var="gcs_service_account=${POLARIS_SERVICE_ACCOUNT}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
+  -var="polaris_base_url=${POLARIS_URL}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
 
 printf '🟢 Superset: Bootstrap metadata and admin user\n'
 if superset_health_ready; then
@@ -256,8 +199,9 @@ else
     REGION="${REGION}" \
     SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
     "${PROJECT_DIR}/bootstrap/superset/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
-fi
+  fi
 
+# Stage 4: run the data pipeline, then publish the dashboard.
 printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
 if pipeline_outputs_ready; then
   printf '   - Pipeline outputs already exist; skipping Spark run\n'
@@ -281,8 +225,11 @@ superset_tf_args=(
   -auto-approve
   -parallelism=1
   "-var=superset_endpoint=${SUPERSET_URL}"
-  "-var=superset_password=${SUPERSET_ADMIN_PASSWORD}"
 )
 run_terraform /workspace/terraform-superset "${superset_tf_args[@]}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
 
 printf '🟢 Setup complete\n'
+printf '\nSuperset login:\n'
+printf '  URL      : %s\n' "${SUPERSET_URL}"
+printf '  Username : %s\n' "${SUPERSET_ADMIN_USERNAME}"
+printf '  Password : %s\n' "${SUPERSET_ADMIN_PASSWORD}"
