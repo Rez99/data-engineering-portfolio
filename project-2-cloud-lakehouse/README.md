@@ -100,6 +100,10 @@ project-2-cloud-lakehouse/
 
 ## 4. Provisioning
 
+### 4.1 Cloud Resource Map
+
+Terraform provisions the persistent cloud services, while the Spark cluster is created temporarily by the workflow at runtime.
+
 ```                                                                                         
  ┌─ APIs ────────────────┐  ┌─ Cloud Run ───────────┐  ┌─ Artifact Registry ────────────┐   
  │ Artifact Registry     │  │ Services              │  │ superset                       │   
@@ -126,6 +130,10 @@ project-2-cloud-lakehouse/
  └───────────────────────┘  └───────────────────────┘  └────────────────────────────────┘             
                                                                                         
 ```
+
+### 4.2 Provisioning Duration
+
+The first Terraform apply is dominated by Cloud SQL creation; most other resources complete within seconds.
 
 ```mermaid
 gantt
@@ -176,7 +184,9 @@ gantt
     google_workflows_workflow.pipeline :12:26, 12:37
 ```
 
+### 4.3 Deployment Sequence
 
+The deployment flow separates infrastructure provisioning, platform initialization, pipeline execution, and Superset asset configuration.
 
 ```mermaid
 sequenceDiagram
