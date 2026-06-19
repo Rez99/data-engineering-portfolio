@@ -1,5 +1,5 @@
 variable "project_id" {
-  description = "GCP project used for the Project 2 validation environment."
+  description = "GCP project used for the Project 2 cloud lakehouse environment."
   type        = string
   default     = "rez-cloud-lakehouse"
 }

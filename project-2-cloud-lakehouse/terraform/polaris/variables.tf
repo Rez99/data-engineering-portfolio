@@ -31,13 +31,13 @@ variable "catalog_name" {
 variable "warehouse_location" {
   description = "GCS base location for the Polaris-backed Iceberg warehouse."
   type        = string
-  default     = "gs://rez-cloud-lakehouse-validation/warehouse/"
+  default     = "gs://rez-cloud-lakehouse-lakehouse/warehouse/"
 }
 
 variable "gcs_service_account" {
   description = "Service account Polaris should use for GCS table storage."
   type        = string
-  default     = "lakehouse-polaris@rez-cloud-lakehouse.iam.gserviceaccount.com"
+  default     = "polaris@rez-cloud-lakehouse.iam.gserviceaccount.com"
 }
 
 variable "namespace" {

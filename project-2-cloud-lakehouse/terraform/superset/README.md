@@ -11,19 +11,19 @@ It owns:
 - the dashboard layout
 
 It intentionally does not provision Cloud Run, Cloud SQL, IAM, secrets, or
-container images. Those remain in `../terraform/`.
+container images. Those remain in `../main/`.
 
 ## Apply
 
 From the Terraform container:
 
 ```bash
-terraform -chdir=/workspace/terraform-superset init
-terraform -chdir=/workspace/terraform-superset apply \
+terraform -chdir=/workspace/terraform/superset init
+terraform -chdir=/workspace/terraform/superset apply \
   -var="superset_endpoint=${SUPERSET_URL}"
 ```
 
-`SUPERSET_URL` is the `superset_service_url` output from `../terraform/`.
+`SUPERSET_URL` is the `superset_service_url` output from `../main/`.
 
 ## Import Existing Assets
 

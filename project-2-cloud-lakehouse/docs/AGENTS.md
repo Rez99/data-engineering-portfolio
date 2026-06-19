@@ -6,7 +6,7 @@ This repository contains Project 2 of a data engineering portfolio. The objectiv
 
 This project is a direct evolution of **Project 1: Local Lakehouse**. Where possible, architectural patterns, pipeline logic, and design decisions should remain conceptually consistent with Project 1, while adapting them appropriately for a cloud environment.
 
-Before beginning any work, read `PROJECT_2_SPEC.md` to understand the project goals, milestones, and acceptance criteria.
+Before beginning any work, read `docs/PROJECT_2_SPEC.md` to understand the project goals, milestones, and acceptance criteria.
 
 ---
 

@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-readonly PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly TERRAFORM_CONTAINER="lakehouse-terraform"
 readonly TERRAFORM_IMAGE="hashicorp/terraform:1.15.6"
 readonly GCLOUD_IMAGE="gcr.io/google.com/cloudsdktool/google-cloud-cli:572.0.0-stable"
@@ -17,14 +18,14 @@ readonly SETUP_COMMAND_LOG="${LOG_DIR}/setup-commands.log"
 readonly PROJECT_ID="rez-cloud-lakehouse"
 readonly REGION="us-central1"
 readonly REGISTRY_HOST="${REGION}-docker.pkg.dev"
-readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/pipeline/superset:dev-amd64"
-readonly POLARIS_SERVICE="lakehouse-polaris"
-readonly POLARIS_BOOTSTRAP_JOB="lakehouse-polaris-bootstrap"
-readonly SUPERSET_SERVICE="lakehouse-superset"
-readonly SUPERSET_BOOTSTRAP_JOB="lakehouse-superset-bootstrap"
+readonly SUPERSET_IMAGE="${REGISTRY_HOST}/${PROJECT_ID}/superset/superset:dev-amd64"
+readonly POLARIS_SERVICE="polaris"
+readonly POLARIS_BOOTSTRAP_JOB="polaris-bootstrap"
+readonly SUPERSET_SERVICE="superset"
+readonly SUPERSET_BOOTSTRAP_JOB="superset-bootstrap"
 readonly POLARIS_REALM="POLARIS"
 readonly POLARIS_ROOT_CLIENT_ID="admin"
-readonly PIPELINE_SUCCESS_SENTINEL="gs://${PROJECT_ID}-validation/ml/xgboost_conversion/metrics/metrics.parquet"
+readonly PIPELINE_SUCCESS_SENTINEL="gs://${PROJECT_ID}-lakehouse/ml/xgboost_conversion/metrics/metrics.parquet"
 readonly SUPERSET_ADMIN_USERNAME="admin"
 readonly SUPERSET_ADMIN_PASSWORD="admin"
 
@@ -90,12 +91,20 @@ get_superset_url() {
     --format='value(status.url)'
 }
 
-superset_health_ready() {
+superset_admin_ready() {
   local superset_url
 
   superset_url="$(get_superset_url)"
+
   curl --silent --fail --output /dev/null \
-    "${superset_url}/health" 2>/dev/null
+    --header "Content-Type: application/json" \
+    --data "{
+      \"username\": \"${SUPERSET_ADMIN_USERNAME}\",
+      \"password\": \"${SUPERSET_ADMIN_PASSWORD}\",
+      \"provider\": \"db\",
+      \"refresh\": true
+    }" \
+    "${superset_url}/api/v1/security/login" 2>/dev/null
 }
 
 pipeline_outputs_ready() {
@@ -130,17 +139,17 @@ docker run --detach \
   --volume "${PROJECT_DIR}:/workspace" \
   --volume "${ADC_FILE}:/credentials/gcp.json:ro" \
   --env GOOGLE_APPLICATION_CREDENTIALS=/credentials/gcp.json \
-  --workdir /workspace/terraform \
+  --workdir /workspace/terraform/main \
   "${TERRAFORM_IMAGE}" \
   -c "sleep infinity" >/dev/null
 
 printf '🟢 Terraform: Provision Artifact Registry\n'
-run_terraform /workspace/terraform init -input=false >/dev/null 2>&1
-run_terraform /workspace/terraform apply \
+run_terraform /workspace/terraform/main init -input=false >/dev/null 2>&1
+run_terraform /workspace/terraform/main apply \
   -json \
   -input=false \
   -auto-approve \
-  -target=google_artifact_registry_repository.pipeline >"${TERRAFORM_ARTIFACT_REGISTRY_LOG}"
+  -target=google_artifact_registry_repository.superset >"${TERRAFORM_ARTIFACT_REGISTRY_LOG}"
 
 printf '🟢 Docker: Build and push Superset image\n'
 printf '   - GCloud: Request Artifact Registry access token\n'
@@ -163,7 +172,7 @@ docker buildx build \
 
 # Stage 2: provision the cloud platform and deploy project artifacts.
 printf '🟢 Terraform: Provision GCP resources\n'
-run_terraform /workspace/terraform apply \
+run_terraform /workspace/terraform/main apply \
   -json \
   -input=false \
   -auto-approve \
@@ -178,27 +187,27 @@ else
     PROJECT_ID="${PROJECT_ID}" \
     REGION="${REGION}" \
     POLARIS_BOOTSTRAP_JOB="${POLARIS_BOOTSTRAP_JOB}" \
-    "${PROJECT_DIR}/bootstrap/polaris/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
+    "${SCRIPT_DIR}/bootstrap-polaris.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
 fi
 
 printf '🟢 Terraform: Configure Polaris catalog\n'
 POLARIS_URL="$(get_polaris_url)"
-run_terraform /workspace/terraform-polaris init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
-run_terraform /workspace/terraform-polaris apply \
+run_terraform /workspace/terraform/polaris init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
+run_terraform /workspace/terraform/polaris apply \
   -json \
   -input=false \
   -auto-approve \
   -var="polaris_base_url=${POLARIS_URL}" >"${TERRAFORM_POLARIS_LOG}" 2>&1
 
 printf '🟢 Superset: Bootstrap metadata and admin user\n'
-if superset_health_ready; then
-  printf '   - Superset: Metadata already initialized; skipping bootstrap\n'
+if superset_admin_ready; then
+  printf '   - Superset: Admin login already works; skipping bootstrap\n'
 else
   env \
     PROJECT_ID="${PROJECT_ID}" \
     REGION="${REGION}" \
     SUPERSET_BOOTSTRAP_JOB="${SUPERSET_BOOTSTRAP_JOB}" \
-    "${PROJECT_DIR}/bootstrap/superset/run.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
+    "${SCRIPT_DIR}/bootstrap-superset.sh" >>"${SETUP_COMMAND_LOG}" 2>&1
   fi
 
 # Stage 4: run the data pipeline, then publish the dashboard.
@@ -206,7 +215,7 @@ printf '🟢 GCloud: Run end-to-end lakehouse pipeline\n'
 if pipeline_outputs_ready; then
   printf '   - Pipeline outputs already exist; skipping Spark run\n'
 else
-  "${PROJECT_DIR}/run.sh"
+  "${SCRIPT_DIR}/run-pipeline.sh"
 fi
 
 printf '🟢 Superset: Refresh metrics runtime\n'
@@ -216,8 +225,8 @@ gcloud_cmd run services update "${SUPERSET_SERVICE}" \
   --update-env-vars="METRICS_REFRESHED_AT=$(date +%s)" >>"${SETUP_COMMAND_LOG}" 2>&1
 
 printf '🟢 Terraform: Configure Superset assets\n'
-SUPERSET_URL="$(terraform_output /workspace/terraform -raw superset_service_url)"
-run_terraform /workspace/terraform-superset init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
+SUPERSET_URL="$(terraform_output /workspace/terraform/main -raw superset_service_url)"
+run_terraform /workspace/terraform/superset init -input=false >>"${SETUP_COMMAND_LOG}" 2>&1
 superset_tf_args=(
   apply
   -json
@@ -226,7 +235,7 @@ superset_tf_args=(
   -parallelism=1
   "-var=superset_endpoint=${SUPERSET_URL}"
 )
-run_terraform /workspace/terraform-superset "${superset_tf_args[@]}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
+run_terraform /workspace/terraform/superset "${superset_tf_args[@]}" >"${TERRAFORM_SUPERSET_LOG}" 2>&1
 
 printf '🟢 Setup complete\n'
 printf '\nSuperset login:\n'

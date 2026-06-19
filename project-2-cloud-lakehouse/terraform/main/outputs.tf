@@ -1,16 +1,16 @@
-output "validation_bucket_name" {
-  description = "Name of the Cloud Storage bucket used by the validation spike."
-  value       = google_storage_bucket.validation.name
+output "lakehouse_bucket_name" {
+  description = "Name of the Cloud Storage bucket used by the lakehouse environment."
+  value       = google_storage_bucket.lakehouse.name
 }
 
-output "validation_bucket_url" {
-  description = "Cloud Storage URL of the validation bucket."
-  value       = google_storage_bucket.validation.url
+output "lakehouse_bucket_url" {
+  description = "Cloud Storage URL of the lakehouse bucket."
+  value       = google_storage_bucket.lakehouse.url
 }
 
 output "artifact_registry_repository" {
-  description = "Artifact Registry repository that stores pipeline images."
-  value       = google_artifact_registry_repository.pipeline.name
+  description = "Artifact Registry repository that stores the Superset image."
+  value       = google_artifact_registry_repository.superset.name
 }
 
 output "workflow_service_account" {
@@ -18,9 +18,9 @@ output "workflow_service_account" {
   value       = google_service_account.workflow.email
 }
 
-output "polaris_database_instance" {
-  description = "Cloud SQL instance that stores Polaris state."
-  value       = google_sql_database_instance.polaris.name
+output "metadata_database_instance" {
+  description = "Cloud SQL instance that stores shared Polaris and Superset metadata."
+  value       = google_sql_database_instance.metadata.name
 }
 
 output "polaris_service_url" {

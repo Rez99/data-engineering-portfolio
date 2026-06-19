@@ -21,8 +21,8 @@ resource "google_project_service" "required" {
   disable_on_destroy = false
 }
 
-resource "google_storage_bucket" "validation" {
-  name     = "${var.project_id}-validation"
+resource "google_storage_bucket" "lakehouse" {
+  name     = "${var.project_id}-lakehouse"
   project  = var.project_id
   location = upper(var.region)
 
@@ -45,18 +45,18 @@ resource "google_storage_bucket" "validation" {
   }
 
   labels = {
-    environment = "validation"
+    environment = "demo"
     project     = "cloud-lakehouse"
   }
 
   depends_on = [google_project_service.required["storage.googleapis.com"]]
 }
 
-resource "google_artifact_registry_repository" "pipeline" {
+resource "google_artifact_registry_repository" "superset" {
   project       = var.project_id
   location      = var.region
-  repository_id = "pipeline"
-  description   = "Container images for the cloud lakehouse pipeline."
+  repository_id = "superset"
+  description   = "Container images for the Superset service."
   format        = "DOCKER"
 
   labels = {
@@ -69,8 +69,8 @@ resource "google_artifact_registry_repository" "pipeline" {
 
 resource "google_service_account" "workflow" {
   project      = var.project_id
-  account_id   = "lakehouse-workflow"
-  display_name = "Lakehouse extraction workflow"
+  account_id   = "workflow"
+  display_name = "Pipeline workflow"
   description  = "Runtime identity used by Workflows to execute pipeline jobs."
 }
 
@@ -97,18 +97,18 @@ resource "google_project_service_identity" "workflows" {
 
 resource "google_workflows_workflow" "pipeline" {
   project             = var.project_id
-  name                = "lakehouse-pipeline"
+  name                = "pipeline"
   region              = var.region
   description         = "Runs the complete lakehouse pipeline with one temporary Spark cluster for load and transform."
   service_account     = google_service_account.workflow.id
   deletion_protection = false
 
-  source_contents = templatefile("${path.module}/../deployment/workflows/pipeline.yaml", {
+  source_contents = templatefile("${path.module}/../../deployment/workflows/pipeline.yaml", {
     project_id              = var.project_id
     region                  = var.region
-    cluster_name            = "lakehouse-spark-pipeline"
+    cluster_name            = "spark-pipeline"
     spark_service_account   = google_service_account.spark.email
-    staging_bucket          = google_storage_bucket.validation.name
+    staging_bucket          = google_storage_bucket.lakehouse.name
     extract_script_uri      = "gs://${google_storage_bucket_object.extract.bucket}/${google_storage_bucket_object.extract.name}"
     load_script_uri         = "gs://${google_storage_bucket_object.load_events.bucket}/${google_storage_bucket_object.load_events.name}"
     runner_script_uri       = "gs://${google_storage_bucket_object.run_dbt.bucket}/${google_storage_bucket_object.run_dbt.name}"
@@ -116,15 +116,15 @@ resource "google_workflows_workflow" "pipeline" {
     train_library_uri       = "gs://${google_storage_bucket_object.train.bucket}/${google_storage_bucket_object.train.name}"
     dbt_project_archive_uri = "gs://${google_storage_bucket_object.dbt_project.bucket}/${google_storage_bucket_object.dbt_project.name}"
     source_url              = var.clickstream_source_url
-    raw_bucket              = google_storage_bucket.validation.name
+    raw_bucket              = google_storage_bucket.lakehouse.name
     raw_object              = "raw/2019-Oct-1000000.csv.gz"
-    raw_csv_uri             = "gs://${google_storage_bucket.validation.name}/raw/2019-Oct-1000000.csv.gz"
+    raw_csv_uri             = "gs://${google_storage_bucket.lakehouse.name}/raw/2019-Oct-1000000.csv.gz"
     expected_rows           = "1000000"
     polaris_url             = google_cloud_run_v2_service.polaris.uri
     polaris_secret          = google_secret_manager_secret.polaris_root_client_secret.id
-    artifact_bucket         = google_storage_bucket.validation.name
+    artifact_bucket         = google_storage_bucket.lakehouse.name
     artifact_prefix         = "ml/xgboost_conversion"
-    feature_export_uri      = "gs://${google_storage_bucket.validation.name}/ml/features/"
+    feature_export_uri      = "gs://${google_storage_bucket.lakehouse.name}/ml/features/"
   })
 
   labels = {
@@ -149,9 +149,9 @@ resource "google_workflows_workflow" "pipeline" {
   ]
 }
 
-resource "google_sql_database_instance" "polaris" {
+resource "google_sql_database_instance" "metadata" {
   project          = var.project_id
-  name             = "lakehouse-polaris"
+  name             = "metadata"
   region           = var.region
   database_version = "POSTGRES_16"
 
@@ -179,13 +179,13 @@ resource "google_sql_database_instance" "polaris" {
 resource "google_sql_database" "polaris" {
   project  = var.project_id
   name     = var.polaris_database_name
-  instance = google_sql_database_instance.polaris.name
+  instance = google_sql_database_instance.metadata.name
 }
 
 resource "google_sql_user" "polaris" {
   project         = var.project_id
   name            = var.polaris_database_user
-  instance        = google_sql_database_instance.polaris.name
+  instance        = google_sql_database_instance.metadata.name
   password        = var.polaris_database_password
   deletion_policy = "ABANDON"
 }
@@ -193,20 +193,20 @@ resource "google_sql_user" "polaris" {
 resource "google_sql_database" "superset" {
   project  = var.project_id
   name     = "superset"
-  instance = google_sql_database_instance.polaris.name
+  instance = google_sql_database_instance.metadata.name
 }
 
 resource "google_sql_user" "superset" {
   project         = var.project_id
   name            = "superset"
-  instance        = google_sql_database_instance.polaris.name
+  instance        = google_sql_database_instance.metadata.name
   password        = var.superset_database_password
   deletion_policy = "ABANDON"
 }
 
 resource "google_service_account" "superset" {
   project      = var.project_id
-  account_id   = "lakehouse-superset"
+  account_id   = "superset"
   display_name = "Lakehouse Superset service"
   description  = "Runtime identity for the Superset service and bootstrap job."
 }
@@ -218,14 +218,14 @@ resource "google_project_iam_member" "superset_cloud_sql_client" {
 }
 
 resource "google_storage_bucket_iam_member" "superset_metrics_viewer" {
-  bucket = google_storage_bucket.validation.name
+  bucket = google_storage_bucket.lakehouse.name
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.superset.email}"
 }
 
 resource "google_cloud_run_v2_job" "superset_bootstrap" {
   project  = var.project_id
-  name     = "lakehouse-superset-bootstrap"
+  name     = "superset-bootstrap"
   location = var.region
 
   deletion_protection = false
@@ -247,7 +247,7 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
         args = [
           "--address=0.0.0.0",
           "--port=5432",
-          google_sql_database_instance.polaris.connection_name,
+          google_sql_database_instance.metadata.connection_name,
         ]
 
         startup_probe {
@@ -302,7 +302,7 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
 
         env {
           name  = "METRICS_BUCKET"
-          value = google_storage_bucket.validation.name
+          value = google_storage_bucket.lakehouse.name
         }
 
         env {
@@ -327,7 +327,7 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
   }
 
   depends_on = [
-    google_artifact_registry_repository.pipeline,
+    google_artifact_registry_repository.superset,
     google_project_iam_member.superset_cloud_sql_client,
     google_storage_bucket_iam_member.superset_metrics_viewer,
     google_sql_database.superset,
@@ -337,7 +337,7 @@ resource "google_cloud_run_v2_job" "superset_bootstrap" {
 
 resource "google_cloud_run_v2_service" "superset" {
   project  = var.project_id
-  name     = "lakehouse-superset"
+  name     = "superset"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
@@ -358,7 +358,7 @@ resource "google_cloud_run_v2_service" "superset" {
       args = [
         "--address=0.0.0.0",
         "--port=5432",
-        google_sql_database_instance.polaris.connection_name,
+        google_sql_database_instance.metadata.connection_name,
       ]
 
       startup_probe {
@@ -401,7 +401,7 @@ resource "google_cloud_run_v2_service" "superset" {
 
       env {
         name  = "METRICS_BUCKET"
-        value = google_storage_bucket.validation.name
+        value = google_storage_bucket.lakehouse.name
       }
 
       env {
@@ -425,7 +425,7 @@ resource "google_cloud_run_v2_service" "superset" {
   }
 
   depends_on = [
-    google_artifact_registry_repository.pipeline,
+    google_artifact_registry_repository.superset,
     google_project_iam_member.superset_cloud_sql_client,
     google_storage_bucket_iam_member.superset_metrics_viewer,
     google_sql_database.superset,
@@ -443,7 +443,7 @@ resource "google_cloud_run_v2_service_iam_member" "superset_public" {
 
 resource "google_service_account" "polaris" {
   project      = var.project_id
-  account_id   = "lakehouse-polaris"
+  account_id   = "polaris"
   display_name = "Lakehouse Polaris service"
   description  = "Runtime identity for Polaris and its Cloud SQL connection."
 }
@@ -455,7 +455,7 @@ resource "google_project_iam_member" "polaris_cloud_sql_client" {
 }
 
 resource "google_storage_bucket_iam_member" "polaris_warehouse_object_admin" {
-  bucket = google_storage_bucket.validation.name
+  bucket = google_storage_bucket.lakehouse.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.polaris.email}"
 }
@@ -468,7 +468,7 @@ resource "google_service_account_iam_member" "polaris_self_token_creator" {
 
 resource "google_service_account" "spark" {
   project      = var.project_id
-  account_id   = "lakehouse-spark"
+  account_id   = "spark-sa"
   display_name = "Lakehouse Spark cluster"
   description  = "Runtime identity for temporary Dataproc clusters."
 }
@@ -480,7 +480,7 @@ resource "google_project_iam_member" "spark_dataproc_worker" {
 }
 
 resource "google_storage_bucket_iam_member" "spark_bucket_object_admin" {
-  bucket = google_storage_bucket.validation.name
+  bucket = google_storage_bucket.lakehouse.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.spark.email}"
 }
@@ -544,23 +544,23 @@ resource "google_secret_manager_secret_iam_member" "spark_polaris_secret_accesso
 
 resource "google_storage_bucket_object" "extract" {
   name   = "spark/extract.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../deployment/spark/extract.py"
+  bucket = google_storage_bucket.lakehouse.name
+  source = "${path.module}/../../deployment/spark/extract.py"
 
   depends_on = [google_project_service.required]
 }
 
 resource "google_storage_bucket_object" "load_events" {
   name   = "spark/load_events.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../deployment/spark/load_events.py"
+  bucket = google_storage_bucket.lakehouse.name
+  source = "${path.module}/../../deployment/spark/load_events.py"
 
   depends_on = [google_project_service.required]
 }
 
 data "archive_file" "dbt_project" {
   type        = "zip"
-  source_dir  = "${path.module}/../deployment/dbt"
+  source_dir  = "${path.module}/../../deployment/dbt"
   output_path = "${path.module}/dbt-project.zip"
 
   excludes = [
@@ -574,37 +574,37 @@ data "archive_file" "dbt_project" {
 
 resource "google_storage_bucket_object" "dbt_project" {
   name   = "dbt/dbt-project.zip"
-  bucket = google_storage_bucket.validation.name
+  bucket = google_storage_bucket.lakehouse.name
   source = data.archive_file.dbt_project.output_path
 }
 
 resource "google_storage_bucket_object" "run_dbt" {
   name   = "spark/run_dbt.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../deployment/spark/run_dbt.py"
+  bucket = google_storage_bucket.lakehouse.name
+  source = "${path.module}/../../deployment/spark/run_dbt.py"
 
   depends_on = [google_project_service.required]
 }
 
 resource "google_storage_bucket_object" "train_model" {
   name   = "spark/train_model.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../deployment/spark/train_model.py"
+  bucket = google_storage_bucket.lakehouse.name
+  source = "${path.module}/../../deployment/spark/train_model.py"
 
   depends_on = [google_project_service.required]
 }
 
 resource "google_storage_bucket_object" "train" {
   name   = "spark/train.py"
-  bucket = google_storage_bucket.validation.name
-  source = "${path.module}/../deployment/spark/train.py"
+  bucket = google_storage_bucket.lakehouse.name
+  source = "${path.module}/../../deployment/spark/train.py"
 
   depends_on = [google_project_service.required]
 }
 
 resource "google_cloud_run_v2_service" "polaris" {
   project  = var.project_id
-  name     = "lakehouse-polaris"
+  name     = "polaris"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
@@ -625,7 +625,7 @@ resource "google_cloud_run_v2_service" "polaris" {
       args = [
         "--address=0.0.0.0",
         "--port=5432",
-        google_sql_database_instance.polaris.connection_name,
+        google_sql_database_instance.metadata.connection_name,
       ]
 
       resources {
@@ -699,7 +699,7 @@ resource "google_cloud_run_v2_service" "polaris" {
 
 resource "google_cloud_run_v2_job" "polaris_bootstrap" {
   project  = var.project_id
-  name     = "lakehouse-polaris-bootstrap"
+  name     = "polaris-bootstrap"
   location = var.region
 
   deletion_protection = false
@@ -721,7 +721,7 @@ resource "google_cloud_run_v2_job" "polaris_bootstrap" {
         args = [
           "--address=0.0.0.0",
           "--port=5432",
-          google_sql_database_instance.polaris.connection_name,
+          google_sql_database_instance.metadata.connection_name,
         ]
 
         startup_probe {

@@ -102,7 +102,7 @@ clickstream rows from the internet into Cloud Storage.
 | **M1.5 Validation** | Verify the object location, schema, and exact row count. | A successful job alone does not prove that the extracted data is correct. | 🟢 Completed |
 
 M1 originally proved extraction in isolation. In the final architecture, the
-same extraction behavior is executed by the parent `lakehouse-pipeline`
+same extraction behavior is executed by the parent `pipeline`
 workflow on the shared temporary Spark cluster.
 
 The extraction job independently reopens the uploaded object and confirms valid

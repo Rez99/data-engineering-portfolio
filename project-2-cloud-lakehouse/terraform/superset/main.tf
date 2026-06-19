@@ -5,7 +5,7 @@ provider "superset" {
 }
 
 locals {
-  asset_root = "${path.module}/../deployment/containers/superset/assets"
+  asset_root = "${path.module}/../../deployment/containers/superset/assets"
 
   database_asset = yamldecode(file("${local.asset_root}/databases/XGBoost_Model_Metrics.yaml"))
 
