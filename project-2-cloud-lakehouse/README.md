@@ -49,9 +49,7 @@ gantt
     title Terraform apply
     dateFormat mm:ss
     axisFormat %M:%S
-    section refresh
     archive_file.dbt_project :00:00, 00:00
-    section other
     google_artifact_registry_repository.superset :00:03, 00:04
     google_project_iam_member.dataproc_operator :00:04, 00:12
     google_service_account.workflow :00:04, 00:17
