@@ -79,27 +79,27 @@ used by Spark and dbt rather than treated as an interactive end-user UI.
 
 ```text
 project-2-cloud-lakehouse/
-├── deployment/           # Deployable project artifacts
-│   ├── containers/         └ # Cloud Run image build contexts for platform services
-│   ├── dbt/                └ # dbt project adapted for Spark
-│   ├── spark/              └ # Spark job entrypoints uploaded to GCS
-│   ├── workflows/          └ # Google Cloud Workflows source definitions
+├── deployment/                 # Deployable project artifacts
+│   ├── containers/               └ # Cloud Run image build contexts for platform services
+│   ├── dbt/                      └ # dbt project adapted for Spark
+│   ├── spark/                    └ # Spark job entrypoints uploaded to GCS
+│   ├── workflows/                └ # Google Cloud Workflows source definitions
 │   └── manifest.example.json
-├── docs/                 # Architecture documentation, ADRs, and project guidance
+├── docs/                       # Architecture documentation, ADRs, and project guidance
 │   ├── AGENTS.md
 │   ├── PROJECT_2_SPEC.md
 │   ├── architecture.md
 │   └── adr/
-├── scripts/              # Local shell entrypoints
+├── scripts/                    # Local shell entrypoints
 │   ├── bootstrap-polaris.sh
 │   ├── bootstrap-superset.sh
 │   ├── destroy.sh
 │   ├── run-pipeline.sh
 │   └── setup.sh
-├── terraform/            # Terraform roots grouped by ownership boundary
-│   ├── main/               └ # Cloud infrastructure
-│   ├── polaris/            └ # Polaris catalog state
-│   └── superset/           └ # Superset dashboards, charts, and datasets
+├── terraform/                  # Terraform roots grouped by ownership boundary
+│   ├── main/                     └ # Cloud infrastructure
+│   ├── polaris/                  └ # Polaris catalog state
+│   └── superset/                 └ # Superset dashboards, charts, and datasets
 ```
 
 ## 5. Provisioning
