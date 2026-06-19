@@ -7,30 +7,38 @@
 ## Table of Contents
 
 1. Project Overview
-2. Deployment
-3. Repository Structure
-4. Provisioning
-5. Reflections and Next Steps
+2. Planning
+3. Deployment
+4. Repository Structure
+5. Provisioning
+6. Reflections and Next Steps
 
 ---
 
 ## 1. Project Overview
 
-Project 2 migrates the local lakehouse from Project 1 to Google Cloud while
-retaining Apache Iceberg, Apache Polaris, dbt Core, Spark, XGBoost, and
-Superset.
+This project demonstrates how a local open lakehouse can be rebuilt on Google
+Cloud using infrastructure-as-code, managed compute, and portable data
+standards. The emphasis is on showing the full engineering lifecycle:
+provisioning cloud resources, deploying platform services, orchestrating a data
+pipeline, and publishing model evaluation outputs.
 
-The end-to-end pipeline downloads a public ecommerce clickstream sample, loads
-it into an Iceberg table, transforms it into session-level ML features, trains
-an XGBoost conversion model, and publishes model evaluation charts in Superset.
-The current pipeline runs through one parent Google Workflow that creates a
-temporary Spark cluster, runs the data pipeline, deletes the cluster, and
-refreshes Superset.
+The end-to-end pipeline downloads a public ecommerce clickstream sample,
+loads it into Iceberg through Polaris, builds session-level ML features with
+dbt on Spark, trains an XGBoost conversion model, and publishes model
+evaluation charts in Superset.
 
 See [docs/PROJECT_2_SPEC.md](docs/PROJECT_2_SPEC.md) for the delivery plan and
 [docs/architecture.md](docs/architecture.md) for the selected architecture.
 
-## 2. Deployment
+## 2. Planning
+
+Project planning is captured in `/docs` rather than scattered through ad hoc
+notes. The project spec defines milestones and acceptance criteria, ADRs record
+architecture decisions, and `AGENTS.md` captures the Codex collaboration rules
+that emerged while building the project.
+
+## 3. Deployment
 
 ### Setup
 
@@ -67,15 +75,15 @@ After a successful deployment, the main user-facing service is:
 Polaris is deployed as a Cloud Run service for Iceberg catalog access. It is
 used by Spark and dbt rather than treated as an interactive end-user UI.
 
-## 3. Repository Structure
+## 4. Repository Structure
 
 ```text
 project-2-cloud-lakehouse/
-├── deployment/           # Stage 3: PUBLISH deployable project artifacts
-│   ├── containers/       # Cloud Run image build contexts for platform services
-│   ├── dbt/              # dbt project adapted for Spark
-│   ├── spark/            # Spark job entrypoints uploaded to GCS
-│   ├── workflows/        # Google Cloud Workflows source definitions
+├── deployment/           # Deployable project artifacts
+│   ├── containers/         └ # Cloud Run image build contexts for platform services
+│   ├── dbt/                └ # dbt project adapted for Spark
+│   ├── spark/              └ # Spark job entrypoints uploaded to GCS
+│   ├── workflows/          └ # Google Cloud Workflows source definitions
 │   └── manifest.example.json
 ├── docs/                 # Architecture documentation, ADRs, and project guidance
 │   ├── AGENTS.md
@@ -89,18 +97,14 @@ project-2-cloud-lakehouse/
 │   ├── run-pipeline.sh
 │   └── setup.sh
 ├── terraform/            # Terraform roots grouped by ownership boundary
-│   ├── main/             # Stage 1a: PROVISION cloud infrastructure
-│   ├── polaris/          # Stage 2b: MANAGE Polaris catalog state
-│   └── superset/         # Stage 2c: MANAGE Superset dashboards/charts/datasets
-├── tests/
-│   ├── ingestion/        # Unit tests for ingestion code
-│   ├── integration/      # Cross-service validation and smoke tests
-│   └── ml/               # Unit tests for ML code
+│   ├── main/               └ # Cloud infrastructure
+│   ├── polaris/            └ # Polaris catalog state
+│   └── superset/           └ # Superset dashboards, charts, and datasets
 ```
 
-## 4. Provisioning
+## 5. Provisioning
 
-### 4.1 Cloud Resource Map
+### 5.1 Cloud Resource Map
 
 Terraform provisions the persistent cloud services, while the Spark cluster is created temporarily by the workflow at runtime.
 
@@ -131,7 +135,7 @@ Terraform provisions the persistent cloud services, while the Spark cluster is c
                                                                                         
 ```
 
-### 4.2 Provisioning Duration
+### 5.2 Provisioning Duration
 
 The first Terraform apply is dominated by Cloud SQL creation; most other resources complete within seconds.
 
@@ -184,7 +188,7 @@ gantt
     google_workflows_workflow.pipeline :12:26, 12:37
 ```
 
-### 4.3 Deployment Sequence
+### 5.3 Deployment Sequence
 
 The deployment flow separates infrastructure provisioning, platform initialization, pipeline execution, and Superset asset configuration.
 
@@ -242,3 +246,22 @@ sequenceDiagram
     Terraform->>GCP: Provision Superset Assets
     end
 ```
+
+## 6. Reflections and Next Steps
+
+Using Codex accelerated the build significantly, especially for exploring cloud
+APIs, translating Project 1 patterns into GCP resources, and iterating on
+Terraform, Workflows, Spark, dbt, and Superset integration. The tradeoff is
+that AI-assisted development can over-expand scope unless the work is bounded
+by a clear roadmap, small milestones, and explicit acceptance criteria.
+
+The project also reinforced that infrastructure-as-code does not automatically
+guarantee clean teardown. Terraform needs to own the full resource lifecycle,
+including generated or service-created resources where possible, and destroy
+flows sometimes need to remove application-level resources from state before
+deleting the underlying platform.
+
+For future work, the setup flow should continue moving toward idempotent,
+restartable steps so development runs can skip work that has already completed
+successfully. This keeps cloud iteration fast while reducing the risk of
+orphaned resources and unnecessary spend.

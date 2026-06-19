@@ -97,6 +97,8 @@ superset_admin_ready() {
   superset_url="$(get_superset_url)"
 
   curl --silent --fail --output /dev/null \
+    --connect-timeout 5 \
+    --max-time 10 \
     --header "Content-Type: application/json" \
     --data "{
       \"username\": \"${SUPERSET_ADMIN_USERNAME}\",
@@ -105,6 +107,21 @@ superset_admin_ready() {
       \"refresh\": true
     }" \
     "${superset_url}/api/v1/security/login" 2>/dev/null
+}
+
+wait_for_superset_admin() {
+  local attempt
+
+  for attempt in {1..30}; do
+    if superset_admin_ready; then
+      return 0
+    fi
+
+    sleep 10
+  done
+
+  printf 'Superset admin login did not become ready in time.\n' >&2
+  return 1
 }
 
 pipeline_outputs_ready() {
@@ -223,6 +240,7 @@ gcloud_cmd run services update "${SUPERSET_SERVICE}" \
   --region="${REGION}" \
   --project="${PROJECT_ID}" \
   --update-env-vars="METRICS_REFRESHED_AT=$(date +%s)" >>"${SETUP_COMMAND_LOG}" 2>&1
+wait_for_superset_admin
 
 printf '🟢 Terraform: Configure Superset assets\n'
 SUPERSET_URL="$(terraform_output /workspace/terraform/main -raw superset_service_url)"

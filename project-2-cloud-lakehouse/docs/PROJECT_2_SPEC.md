@@ -142,7 +142,7 @@ portable model plus evaluation artifacts for downstream reporting.
 
 | Mini-milestone | Deliverable | Acceptance criterion | Status |
 | --- | --- | --- | --- |
-| **M4.1 Migrate training code** | Port the Project 1 external-memory XGBoost training and evaluation logic into a standalone ML service. | Targeted local tests train and evaluate from synthetic Parquet input and produce the expected artifacts. | 🟢 Completed |
+| **M4.1 Migrate training code** | Port the Project 1 external-memory XGBoost training and evaluation logic into the Spark-backed pipeline. | A local synthetic Parquet input can train and produce the expected model-evaluation artifacts. | 🟢 Completed |
 | **M4.2 Integrate training platform** | Connect the feature output in GCS to an XGBoost Cloud Run Job and configure artifact storage. | The Cloud Run Job can read the feature dataset and write a test artifact to GCS. | 🟢 Completed |
 | **M4.3 Run training workflow** | Orchestrate the production training and evaluation job after transformation. | The workflow succeeds and GCS contains a non-empty model, metrics, baseline comparison, confusion matrix, feature importance, and ROC curve. | 🟢 Completed |
 
