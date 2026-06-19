@@ -1,6 +1,6 @@
 # Project 2: Cloud Lakehouse
 
-*Project 2 extends the local lakehouse platform into a cloud-native data platform, demonstrating modern data engineering using infrastructure-as-code while prioritizing open standards and portability over vendor-specific services.*
+*Project 2 extends the local lakehouse platform from [Project 1](../project-1-local-lakehouse/) into a cloud-native data platform, demonstrating modern data engineering using infrastructure-as-code while prioritizing open standards and portability over vendor-specific services.*
 
 ---
 
@@ -250,8 +250,8 @@ sequenceDiagram
 ## 6. Reflections and Next Steps
 
 Using Codex accelerated the build significantly, especially for exploring cloud
-APIs, translating Project 1 patterns into GCP resources, and iterating on
-Terraform, Workflows, Spark, dbt, and Superset integration. The tradeoff is
+APIs, translating [Project 1](../project-1-local-lakehouse/) patterns into GCP
+resources, and iterating on Terraform, Workflows, Spark, dbt, and Superset integration. The tradeoff is
 that AI-assisted development can over-expand scope unless the work is bounded
 by a clear roadmap, small milestones, and explicit acceptance criteria.
 

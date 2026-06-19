@@ -2,7 +2,7 @@
 
 ## 1. Project Goal
 
-Project 2 extends the local lakehouse platform developed in Project 1 into a cloud-native data platform. The primary objective is to demonstrate the ability to provision, deploy, and operate a modern data engineering stack using infrastructure-as-code and managed cloud services.
+Project 2 extends the local lakehouse platform developed in [Project 1](../../project-1-local-lakehouse/) into a cloud-native data platform. The primary objective is to demonstrate the ability to provision, deploy, and operate a modern data engineering stack using infrastructure-as-code and managed cloud services.
 
 This project is not intended to build a production-scale system. Instead, it should showcase sound engineering judgment, reproducibility, automation, and familiarity with common industry tooling.
 
