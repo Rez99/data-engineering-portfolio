@@ -94,9 +94,6 @@ The source dataset contains one row per user interaction.
 ## 2.2 Curated Session-Level Feature Store
 
 Events belonging to the same `user_session` are aggregated into a curated session-level feature store that serves as the training dataset for the purchase-conversion model.
-
-To reduce the impact of likely bot traffic and extreme outliers, sessions above the 99.9th percentile of `total_activity_count` (`> 69` events) are excluded. This removes 9,078 of 9.24 million sessions.
-
 ```json
 {
   "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1",
@@ -118,7 +115,7 @@ To reduce the impact of likely bot traffic and extreme outliers, sessions above 
   "seconds_to_first_cart": 26
 }
 ```
-
+To reduce the impact of likely bot traffic and extreme outliers, sessions above the 99.9th percentile of `total_activity_count` (`> 69` events) are excluded. This removes 9,078 of 9.24 million sessions.
 ## 2.3 Model Prediction
 
 The session-level features are used to train an XGBoost classifier that estimates the probability that a session will result in a purchase.
