@@ -45,6 +45,7 @@ ROC_CURVE_PATH = f"{LOCAL_DIR}/roc_curve.parquet"
 
 ML_OBJECT_PREFIX = "ml/xgboost_conversion"
 TRAIN_BATCH_ROWS = 100_000
+ROC_DISPLAY_POINTS = 1_000
 MAX_BIN = 256
 CATEGORY_COLUMNS = ["brand", "category_code"]
 FEATURE_COLUMNS = [
@@ -135,6 +136,14 @@ def write_parquet(df, path):
             FORMAT parquet
         )
     """)
+
+
+def downsample_curve_points(df, max_points):
+    if len(df) <= max_points:
+        return df
+
+    point_indexes = np.linspace(0, len(df) - 1, max_points, dtype=int)
+    return df.iloc[np.unique(point_indexes)].reset_index(drop=True)
 
 
 def load_feature_store():
@@ -436,6 +445,10 @@ def evaluate_model():
             "tpr": tpr,
             "threshold": thresholds,
         }
+    )
+    roc_curve_df = downsample_curve_points(
+        roc_curve_df,
+        ROC_DISPLAY_POINTS,
     )
 
     write_parquet(metrics_df, METRICS_PATH)

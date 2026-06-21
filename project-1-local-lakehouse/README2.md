@@ -21,6 +21,8 @@ An end-to-end data and machine learning platform that transforms 42 million e-co
 
 This project demonstrates how raw e-commerce clickstream events can be transformed into machine-learning-ready features, purchase-conversion predictions, and interactive dashboards using a modern lakehouse architecture.
 
+In a real e-commerce setting, these predictions could support just-in-time interventions, such as targeted offers, cart reminders, or personalized recommendations for high-intent sessions.
+
 The project explores three questions:
 
 1. How can large analytical datasets be processed efficiently on commodity hardware?
@@ -77,35 +79,43 @@ The source dataset contains one row per user interaction.
 
 ```json
 {
-  "event_time": "2019-10-01 00:00:00 UTC",
-  "event_type": "view",
-  "product_id": 44600062,
+  "event_time": "2019-10-02 11:41:41",
+  "event_type": "cart",
+  "product_id": 1004856,
+  "category_id": 2053013555631882655,
   "category_code": "electronics.smartphone",
-  "brand": "shiaomi",
-  "price": 489.07,
-  "user_id": 541312140,
-  "user_session": "72d76fde-8bb3-4e00-8c23-a032dfed738c"
+  "brand": "samsung",
+  "price": 130.25,
+  "user_id": 512481982,
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1"
 }
 ```
 
 ## 2.2 Curated Session-Level Feature Store
 
-Events belonging to the same `user_session` are aggregated into a curated session-level feature store. This feature store serves as the training dataset for the purchase-conversion model.
+Events belonging to the same `user_session` are aggregated into a curated session-level feature store that serves as the training dataset for the purchase-conversion model.
+
+To reduce the impact of likely bot traffic and extreme outliers, sessions above the 99.9th percentile of `total_activity_count` (`> 69` events) are excluded. This removes 9,078 of 9.24 million sessions.
 
 ```json
 {
-  "user_session": "72d76fde-8bb3-4e00-8c23-a032dfed738c",
-  "user_id": 541312140,
-  "brand": "shiaomi",
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1",
+  "user_id": 512481982,
+  "brand": "samsung",
   "category_code": "electronics.smartphone",
-  "view_count": 4,
+  "total_activity_count": 4,
+  "view_count": 2,
   "cart_add_count": 1,
-  "purchase_count": 0,
-  "converted": false,
-  "session_duration_seconds": 423,
-  "day_of_week": 2,
-  "hour_of_day": 14,
-  "seconds_to_first_cart": 127
+  "purchase_count": 1,
+  "converted": true,
+  "session_start_time": "2019-10-02 11:41:15",
+  "session_end_time": "2019-10-02 11:42:45",
+  "session_duration_seconds": 90,
+  "day_of_week": 3,
+  "hour_of_day": 11,
+  "first_view_time": "2019-10-02 11:41:15",
+  "first_cart_time": "2019-10-02 11:41:41",
+  "seconds_to_first_cart": 26
 }
 ```
 
@@ -291,7 +301,7 @@ pipeline/
 ### Change to the Project Directory
 
 ```bash
-cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts
+cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
 ```
 
 ### Start the Platform
@@ -328,7 +338,7 @@ After a successful deployment, the following services are available locally:
 ### Change to the Project Directory
 
 ```bash
-cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts
+cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
 ```
 
 ### Stop the Platform
@@ -369,6 +379,8 @@ The dashboard visualizes the evaluation artifacts produced by the machine learni
 
 These artifacts provide both quantitative measures of model performance and qualitative insight into the factors that influence purchase conversion.
 
+The dashboard also compares XGBoost against a majority-class baseline, which is important because purchase conversion is an imbalanced classification problem.
+
 # 7. Reflections and Next Steps
 
 ## 7.1 Key Lessons
@@ -378,6 +390,8 @@ This project reinforced that modern data engineering is less about individual to
 One unexpected lesson was the importance of diagrams. As the architecture grew, diagrams became essential for understanding the system and communicating design decisions. Often, the act of drawing a workflow or architecture diagram exposed gaps in my own understanding.
 
 The project also highlighted the value of benchmarking. Measuring performance and resource usage directly led to better architectural decisions than relying on assumptions.
+
+The setup and reset scripts became part of the engineering product: a portfolio reviewer can start the full platform, inspect the outputs, and tear everything down without manually configuring each service.
 
 ## 7.2 Trade-offs and Limitations
 
@@ -399,6 +413,6 @@ Trade-offs include:
 
 ## 7.3 Future Directions
 
-The next step is to deploy the same architecture in the cloud using Infrastructure as Code and managed services.
+This local platform became the baseline for [Project 2](../project-2-cloud-lakehouse/), which migrates the same lakehouse workflow to Google Cloud using Infrastructure as Code and managed services.
 
 Future projects will build on this foundation by exploring distributed processing with Spark, streaming ingestion, automated model retraining, and real-time data products.
