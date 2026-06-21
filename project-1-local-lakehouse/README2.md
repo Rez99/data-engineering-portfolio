@@ -64,18 +64,18 @@ The pipeline uses the October 2019 file from [**Kaggle's E-Commerce Behavior Dat
 
 ### Outputs
 
-The pipeline transforms raw clickstream events into analytics- and machine-learning-ready artifacts.
+The platform produces the following artifacts:
 
-| Output                   | Purpose                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Output | Purpose |
+| --- | --- |
 | Iceberg Lakehouse Tables | Store raw events, transformed datasets, and session-level features in an open table format |
-| XGBoost Model            | Predict whether a user session will result in a purchase                                   |
-| Evaluation Metrics       | Quantify model performance using ROC AUC, confusion matrix, and related measures           |
-| Superset Dashboard       | Visualize model performance and explain model behavior through interactive dashboards      |
+| XGBoost Model | Predict whether a user session will result in a purchase |
+| Evaluation Metrics | Quantify model performance using ROC AUC, confusion matrix, and related measures |
+| Superset Dashboard | Visualize model performance and explain model behavior through interactive dashboards |
 
 ## 1.3 End-to-End Pipeline
 
-The pipeline transforms raw clickstream events into machine-learning-ready features, trains a purchase-conversion model, and publishes the results for interactive analysis.
+The workflow below summarizes the movement of data through the platform.
 
 ```mermaid
 flowchart LR
@@ -163,7 +163,12 @@ These evaluation artifacts are published to the lakehouse and visualized through
 
 ## 3.1 Detailed Pipeline Flow
 
-The diagram below illustrates how data moves through the platform during an end-to-end pipeline execution.
+The pipeline runs as four sequential Airflow DAGs. The first downloads the raw 
+clickstream data into object storage. The second loads it into cataloged Iceberg 
+tables via an intermediate Parquet conversion. The third runs dbt transformation 
+models that aggregate raw events into a session-level feature store. The fourth 
+trains and evaluates the XGBoost classifier and publishes the model artifacts. 
+The diagram below traces these stages and the interactions between components.
 
 ```mermaid
 sequenceDiagram
@@ -177,29 +182,35 @@ sequenceDiagram
     participant Visualization
 
     rect rgb(255, 230, 230)
-        Orchestration->>ObjectStorage: Extract clickstream data
+        Orchestration->>ObjectStorage: DAG 1️⃣ > Extract
     end
 
     rect rgb(242, 255, 230)
-        Orchestration->>QueryEngine: Load data into Iceberg
+        Orchestration->>QueryEngine: DAG 2️⃣ > Load
         QueryEngine->>ObjectStorage: Write Parquet
-        QueryEngine->>ObjectStorage: Write Iceberg tables
+        QueryEngine->>ObjectStorage: Write Iceberg
     end
 
     rect rgb(230, 255, 255)
-        Orchestration->>Transformation: Execute dbt models
-        Transformation->>QueryEngine: Build staging models
-        Transformation->>QueryEngine: Build intermediate models
-        Transformation->>QueryEngine: Build session-level feature store
+        Orchestration->>Transformation: DAG 3️⃣ > Transform
+        Transformation->>QueryEngine: Run staging model
+        QueryEngine->>ObjectStorage: Write staging model
+
+        Transformation->>QueryEngine: Run intermediate model
+        QueryEngine->>ObjectStorage: Write intermediate model
+
+        Transformation->>QueryEngine: Run mart model
+        QueryEngine->>ObjectStorage: Write mart model<br/>(feature store)
     end
 
     rect rgb(242, 230, 255)
-        Orchestration->>ML: Train and evaluate model
-        ML->>ObjectStorage: Publish model artifacts
-        ML->>ObjectStorage: Publish evaluation metrics
+        Orchestration->>ML: DAG 4️⃣ > Train + evaluate model
+        Note over ObjectStorage,ML: Read session features
+        ML->>ML: Predict purchase conversion<br/>and calculate metrics
+        ML->>ObjectStorage: Publish model and metrics
     end
 
-    Note over ObjectStorage,Visualization: Superset reads model artifacts and metrics
+    Note over ObjectStorage,Visualization: Read model metrics
 ```
 
 ## 3.2 Technology Stack
