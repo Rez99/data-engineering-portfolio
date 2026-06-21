@@ -6,34 +6,15 @@ An end-to-end data and machine learning platform that transforms 42 million e-co
 
 ## Table of Contents
 
-1. [What This Project Does](#1-what-this-project-does)
-   - 1.1 Problem Statement
-   - 1.2 Inputs and Outputs
-   - 1.3 End-to-End Pipeline
-2. [Follow One Session](#2-follow-one-session)
-   - 2.1 Raw Clickstream Event
-   - 2.2 Curated Session-Level Feature Store
-   - 2.3 Model Prediction
-   - 2.4 Model Evaluation
-3. [Architecture](#3-architecture)
-   - 3.1 Detailed Pipeline Flow
-   - 3.2 Technology Stack
-4. [Why These Choices](#4-why-these-choices)
-   - 4.1 Benchmarking the Alternatives
-   - 4.2 Resource-Aware Engineering
-5. [Deployment](#5-deployment)
-    - 5.1 Clone
-    - 5.2 Repository Structure
-    - 5.3 Start
-    - 5.4 Services
-    - 5.5 Stop
-6. [Results](#6-results)
-   - 6.1 Pipeline Execution
-   - 6.2 Model Evaluation Dashboard
-7. [Reflections and Next Steps](#7-reflections-and-next-steps)
-   - 7.1 Key Lessons
-   - 7.2 Trade-offs and Limitations
-   - 7.3 Future Directions
+|||
+|---|---|
+| **[1. What This Project Does](#1-what-this-project-does)**         | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Pipeline                                           |
+| **[2. Follow One Session](#2-follow-one-session)**                 | 2.1 Raw Clickstream Event<br>2.2 Curated Session-Level Feature Store<br>2.3 Model Prediction<br>2.4 Model Evaluation |
+| **[3. Architecture](#3-architecture)**                             | 3.1 Detailed Pipeline Flow<br>3.2 Technology Stack                                                                   |
+| **[4. Why These Choices](#4-why-these-choices)**                   | 4.1 Benchmarking the Alternatives<br>4.2 Resource-Aware Engineering                                                  |
+| **[5. Deployment](#5-deployment)**                                 | 5.1 Clone<br>5.2 Repository Structure<br>5.3 Start<br>5.4 Services<br>5.5 Stop                                       |
+| **[6. Results](#6-results)**                                       | 6.1 Pipeline Execution<br>6.2 Model Evaluation Dashboard                                                             |
+| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 Key Lessons<br>7.2 Trade-offs and Limitations<br>7.3 Future Directions                                           |
 
 # 1. What This Project Does
 ## 1.1 Problem Statement
