@@ -1,47 +1,167 @@
 # Project 1: Local Lakehouse
 
-*A fully containerized local lakehouse platform built with open-source technologies, modern data engineering workflows, and efficient analytical processing on commodity hardware.*
+An end-to-end data and machine learning platform that transforms 42 million e-commerce clickstream events into session-level features, purchase-conversion predictions, and interactive dashboards using open-source lakehouse technologies.
 
 ---
 
 ## Table of Contents
 
-1. Project Overview
-2. Architecture
-3. Design Decisions
-4. Deployment
-5. Reflections and Next Steps
+|Section|Contents|
+|---|---|
+| **[1. What This Project Does](#1-what-this-project-does)**         | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Pipeline                                           |
+| **[2. Follow One Session](#2-follow-one-session)**                 | 2.1 Raw Clickstream Event<br>2.2 Curated Session-Level Feature Store<br>2.3 Model Prediction<br>2.4 Model Evaluation |
+| **[3. Architecture](#3-architecture)**                             | 3.1 Detailed Pipeline Flow<br>3.2 Technology Stack                                                                   |
+| **[4. Why These Choices](#4-why-these-choices)**                   | 4.1 Benchmarking the Alternatives<br>4.2 Resource-Aware Engineering                                                  |
+| **[5. Deployment](#5-deployment)**                                 | 5.1 Clone<br>5.2 Repository Structure<br>5.3 Start<br>5.4 Services<br>5.5 Stop                                       |
+| **[6. Results](#6-results)**                                       | 6.1 Pipeline Execution<br>6.2 Model Evaluation Dashboard                                                             |
+| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 Key Lessons<br>7.2 Trade-offs and Limitations<br>7.3 Future Directions                                           |
 
----
+# 1. What This Project Does
+## 1.1 Problem Statement
 
-## 1. Project Overview
+This project demonstrates how raw e-commerce clickstream events can be transformed into machine-learning-ready features, purchase-conversion predictions, and interactive dashboards using a modern lakehouse architecture.
 
-This project builds a fully containerized local lakehouse platform using modern open-source data engineering tools. A single setup script provisions and configures the services. Apache Airflow then orchestrates the data and machine learning pipeline:
+In a real e-commerce setting, these predictions could support just-in-time interventions, such as targeted offers, cart reminders, or personalized recommendations for high-intent sessions.
 
-1. Downloads a publicly available e-commerce clickstream dataset in CSV format.
-2. Converts the CSV data to Parquet and loads it into cataloged Apache Iceberg tables.
-3. Transforms the event data into a session-level feature store for machine learning.
-4. Trains an XGBoost classifier to predict whether a user session contains a purchase.
-5. Publishes the model outputs for Apache Superset to read and visualize as performance metrics and feature importance.
+The project explores three questions:
+
+1. How can large analytical datasets be processed efficiently on commodity hardware?
+2. What advantages does a lakehouse provide over traditional databases and file-based analytics?
+3. How can data engineering, analytics engineering, and machine learning be combined into a reproducible end-to-end workflow?
+
+## 1.2 Inputs and Outputs
+
+### Input
+
+The pipeline uses the October 2019 file from [**Kaggle's E-Commerce Behavior Data from Multi-Category Store**](https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store) dataset. Each row represents a user-product interaction from a large multi-category online store.
+
+| Attribute   | Value                                                      |
+| ----------- | ---------------------------------------------------------- |
+| Source      | Kaggle: E-Commerce Behavior Data from Multi-Category Store |
+| File        | `2019-Oct.csv.gz`                                          |
+| Format      | Compressed CSV                                             |
+| Size        | 42.4 million events                                        |
+| Period      | October 2019                                               |
+| Granularity | One row per user event                                     |
+| Event Types | `view`, `cart`, `remove_from_cart`, `purchase`             |
+
+### Outputs
+
+The platform produces the following artifacts:
+
+| Output | Purpose |
+| --- | --- |
+| Iceberg Lakehouse Tables | Store raw events, transformed datasets, and session-level features in an open table format |
+| XGBoost Model | Predict whether a user session will result in a purchase |
+| Evaluation Metrics | Quantify model performance using ROC AUC, confusion matrix, and related measures |
+| Superset Dashboard | Visualize model performance and explain model behavior through interactive dashboards |
+
+## 1.3 End-to-End Pipeline
+
+The workflow below summarizes the movement of data through the platform.
 
 ```mermaid
 flowchart LR
-    A[Download Clickstream Data]
-    --> B[Load Data into the Lakehouse]
-    --> C[Build Session Feature Store]
-    --> D[Train XGBoost Classifier]
-    --> E[Visualize Model Metrics]
+    A[Raw Clickstream Events]
+    --> B[Lakehouse Tables]
+    --> C[Session-Level Features]
+    --> D[Purchase Conversion Model]
+    --> E[Metrics & Dashboard]
 ```
 
-## 2. Architecture
+# 2. Follow One Session
 
-#### How the Components Fit Together
+The machine learning workflow operates at the session level rather than the event level. Individual user interactions are first aggregated into session-level features, which are then used to train and evaluate a purchase-conversion model.
 
-The platform follows a layered lakehouse architecture that separates orchestration, storage, transformation, machine learning, and visualization. Apache Airflow orchestrates the workflow, RustFS stores the data, and Polaris catalogs the Iceberg tables. DuckDB and dbt produce session-level features, XGBoost predicts purchase conversion, and Apache Superset presents the evaluation results.
+## 2.1 Raw Clickstream Event
 
-#### High-Level Architecture
+The source dataset contains one row per user interaction.
 
-*The diagram below illustrates the flow of data through the platform and the interaction between the major components.*
+```json
+{
+  "event_time": "2019-10-02 11:41:41",
+  "event_type": "cart",
+  "product_id": 1004856,
+  "category_id": 2053013555631882655,
+  "category_code": "electronics.smartphone",
+  "brand": "samsung",
+  "price": 130.25,
+  "user_id": 512481982,
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1"
+}
+```
+
+## 2.2 Curated Session-Level Feature Store
+
+Events belonging to the same `user_session` are aggregated into a curated session-level feature store that serves as the training dataset for the purchase-conversion model.
+
+To reduce the impact of likely bot traffic and extreme outliers, sessions above the 99.9th percentile of `total_activity_count` (`> 69` events) are excluded. This removes 9,078 of 9.24 million sessions.
+
+```json
+{
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1",
+  "user_id": 512481982,
+  "brand": "samsung",
+  "category_code": "electronics.smartphone",
+  "total_activity_count": 4,
+  "view_count": 2,
+  "cart_add_count": 1,
+  "purchase_count": 1,
+  "converted": true,
+  "session_start_time": "2019-10-02 11:41:15",
+  "session_end_time": "2019-10-02 11:42:45",
+  "session_duration_seconds": 90,
+  "day_of_week": 3,
+  "hour_of_day": 11,
+  "first_view_time": "2019-10-02 11:41:15",
+  "first_cart_time": "2019-10-02 11:41:41",
+  "seconds_to_first_cart": 26
+}
+```
+
+## 2.3 Model Prediction
+
+The session-level features are used to train an XGBoost classifier that estimates the probability that a session will result in a purchase.
+
+Example prediction:
+
+```json
+{
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1",
+  "purchase_probability": 0.663804,
+  "predicted_conversion": true,
+  "actual_conversion": true
+}
+```
+
+## 2.4 Model Evaluation
+
+Predictions from the test dataset are aggregated into evaluation artifacts that quantify model performance.
+
+Example metrics:
+
+```json
+{
+  "roc_auc": 0.809872,
+  "accuracy": 0.937585,
+  "balanced_accuracy": 0.642014,
+  "f1_true": 0.392943,
+  "pr_auc": 0.378796
+}
+```
+
+These evaluation artifacts are published to the lakehouse and visualized through an interactive dashboard.
+
+# 3. Architecture
+
+## 3.1 Detailed Pipeline Flow
+
+The pipeline runs as four sequential Airflow DAGs. The first downloads the raw 
+clickstream data into object storage. The second loads it into cataloged Iceberg 
+tables via an intermediate Parquet conversion. The third runs dbt transformation 
+models that aggregate raw events into a session-level feature store. The fourth 
+trains and evaluates the XGBoost classifier and publishes the model artifacts. 
+The diagram below traces these stages and the interactions between components.
 
 ```mermaid
 sequenceDiagram
@@ -86,7 +206,7 @@ sequenceDiagram
     Note over ObjectStorage,Visualization: Read model metrics
 ```
 
-#### Technology Stack
+## 3.2 Technology Stack
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
@@ -100,9 +220,9 @@ sequenceDiagram
 | Machine Learning | <img src="assets/logos/xgboost.png" alt="XGBoost" height="30"> | Purchase-conversion prediction |
 | Visualization | <img src="assets/logos/superset.png" alt="Superset" height="30"> | Dashboarding and data exploration |
 
-## 3. Design Decisions
+# 4. Why These Choices
 
-#### Benchmarking the Alternatives
+## 4.1 Benchmarking the Alternatives
 
 Before building the lakehouse, I wanted to answer two questions:
 
@@ -118,73 +238,47 @@ xychart-beta
     y-axis "Seconds" 0 --> 75
     bar [69.13, 59.32, 0.13, 0.13]
 ```
-| Stage | Architecture | Stack | Storage Cost | Memory Cost | Compute Cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | File Analytics | Pandas + CSV.GZ | 🟠 Medium | 🔴 High | 🔴 High | Simple and flexible for exploratory analysis, but limited by available memory. |
-| 2 | OLTP Database | PostgreSQL | 🔴 High | 🟢 Low | 🔴 High | Optimized for transactions and updates, not large analytical scans. |
-| 3 | OLAP Database | DuckDB | 🟢 Low | 🟢 Low | 🟢 Low | Columnar OLAP systems dramatically reduce storage and query costs for analytics. |
-| 4 | Lakehouse Architecture | DuckDB + Iceberg + Polaris | 🟢 Low | 🟢 Low | 🟢 Low | Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities. |
 
-*Representative benchmark query over the full 42-million-row clickstream dataset.*
+| Stage | Architecture           | Stack                      | Storage Cost | Memory Cost | Compute Cost | Notes                                                                                      |
+| ----- | ---------------------- | -------------------------- | ------------ | ----------- | ------------ | ------------------------------------------------------------------------------------------ |
+| 1     | File Analytics         | Pandas + CSV.GZ            | 🟠 Medium    | 🔴 High     | 🔴 High      | Simple and flexible for exploratory analysis, but limited by available memory.             |
+| 2     | OLTP Database          | PostgreSQL                 | 🔴 High      | 🟢 Low      | 🔴 High      | Optimized for transactions and updates, not large analytical scans.                        |
+| 3     | OLAP Database          | DuckDB                     | 🟢 Low       | 🟢 Low      | 🟢 Low       | Columnar OLAP systems dramatically reduce storage and query costs for analytics.           |
+| 4     | Lakehouse Architecture | DuckDB + Iceberg + Polaris | 🟢 Low       | 🟢 Low      | 🟢 Low       | Lakehouses decouple storage, metadata, and compute while retaining warehouse capabilities. |
 
-The benchmarks validated two important ideas. First, columnar OLAP systems dramatically reduce both storage and compute costs compared with traditional row-oriented databases. Second, lakehouses solve a different problem: they decouple storage, metadata, and compute while introducing capabilities such as schema evolution, governance, and ACID transactions. These observations directly informed the architecture of the final platform.
+The benchmarks validated two important ideas. First, columnar OLAP systems dramatically reduce both storage and compute costs compared with traditional row-oriented databases. Second, lakehouses solve a different problem: they decouple storage, metadata, and compute while introducing capabilities such as schema evolution, governance, and ACID transactions.
 
-#### Resource-Aware Engineering
+## 4.2 Resource-Aware Engineering
 
 Four implementation decisions keep peak memory use manageable on commodity hardware:
 
-- **Columnar, out-of-core processing**. The core pipeline uses DuckDB and Parquet rather than materializing the full dataset as an in-memory Pandas DataFrame.
-- **Staged ingestion**. The ingestion pipeline was redesigned from `CSV → Iceberg` to `CSV → Parquet → Iceberg`. By materializing an intermediate Parquet artifact, expensive CSV parsing is separated from Iceberg table creation, reducing peak memory utilization and improving scalability.
-- **Independent dbt model execution**. Large dbt models are orchestrated as separate Airflow tasks, allowing memory to be reclaimed between stages while improving observability and retry granularity.
-- **External-memory machine learning**. The original Iceberg → Pandas → XGBoost workflow was replaced with a disk-backed pipeline using Parquet and XGBoost's external-memory mode, reducing peak memory usage without requiring the full training dataset in RAM.
+* **Columnar, out-of-core processing** using DuckDB and Parquet rather than in-memory Pandas DataFrames.
+* **Staged ingestion** using a `CSV → Parquet → Iceberg` workflow to reduce peak memory pressure during ingestion.
+* **Independent dbt model execution** to reclaim memory between transformation stages and improve observability.
+* **External-memory machine learning** using streamed Parquet batches and XGBoost external-memory training.
 
 Together, these choices trade some intermediate storage and orchestration complexity for lower peak memory consumption.
 
-## 4. Deployment
+# 5. Deployment
 
-#### Setup
+## 5.1 Clone
 
-Prerequisites: Docker Desktop, `curl`, `jq`, and `openssl`.
+### Prerequisites
 
-Clone the repository and run the setup script:
+The platform requires:
+
+* Docker Desktop
+* `curl`
+* `jq`
+* `openssl`
+
+### Clone the Repository
 
 ```bash
 git clone https://github.com/Rez99/data-engineering-portfolio.git
-cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
-bash setup.sh
 ```
 
-The setup script provisions the lakehouse infrastructure, configures the required services, runs the end-to-end pipeline, and imports the Superset dashboard through a single command.
-
-For a practical local demonstration, the default pipeline processes a
-one-million-row sample. The benchmark results above were produced separately
-using the full 42-million-row dataset.
-
-<img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
-
-#### Resetting the Environment
-
-To stop the platform and return to a clean local environment, run:
-
-```bash
-cd data-engineering-portfolio/project-1-lakehouse/pipeline/scripts/
-bash reset.sh
-```
-
-The reset script removes the local containers, volumes, generated credentials,
-and Airflow runtime files. The next setup run rebuilds the environment from the
-version-controlled configuration.
-
-#### Platform Services
-After a successful deployment, the following services are available locally:
-| Service | Purpose | URL | Credentials |
-| --- | --- | --- | --- |
-| Apache Airflow | Pipeline orchestration | http://localhost:8080 | `airflow` / `airflow` |
-| RustFS | S3-compatible object storage | http://localhost:9001 | `polaris_root` / `polaris_pass` |
-| Apache Polaris | Iceberg catalog | http://localhost:8181 | API only |
-| Apache Superset | Model evaluation dashboard | http://localhost:8088 | `admin` / `admin` |
-
-#### Repository Structure
+## 5.2 Repository Structure
 
 ```text
 pipeline/
@@ -204,28 +298,122 @@ pipeline/
     └── superset_assets/    # Version-controlled dashboard definitions
 ```
 
-#### Platform in Action
+## 5.3 Start
 
-The figures below show the platform after a successful pipeline execution.
+### Change to the Project Directory
 
-**Apache Airflow**
+```bash
+cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
+```
 
-<img src="assets/logos/airflow_ui.png" alt="Apache Airflow UI" width="1000">
+### Start the Platform
 
-**Apache Superset**
+```bash
+bash setup.sh
+```
+
+The setup script performs the complete deployment workflow:
+
+1. Starts the required infrastructure services.
+2. Configures object storage and catalog components.
+3. Executes the end-to-end data pipeline.
+4. Trains and evaluates the machine learning model.
+5. Imports the Superset dashboard and supporting assets.
+
+The default pipeline now processes the full 42-million-row October 2019 dataset, matching the benchmark scale used elsewhere in this write-up.
+
+<img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
+
+## 5.4 Services
+
+After a successful deployment, the following services are available locally:
+
+| Service         | Purpose                      | URL                   | Credentials                     |
+| --------------- | ---------------------------- | --------------------- | ------------------------------- |
+| Apache Airflow  | Pipeline orchestration       | http://localhost:8080 | `airflow` / `airflow`           |
+| RustFS          | S3-compatible object storage | http://localhost:9001 | `polaris_root` / `polaris_pass` |
+| Apache Polaris  | Iceberg catalog              | http://localhost:8181 | API only                        |
+| Apache Superset | Model evaluation dashboard   | http://localhost:8088 | `admin` / `admin`               |
+
+## 5.5 Stop
+
+### Change to the Project Directory
+
+```bash
+cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
+```
+
+### Stop the Platform
+
+```bash
+bash reset.sh
+```
+
+The reset script removes:
+
+* Docker containers
+* Docker volumes
+* Generated credentials
+* Airflow runtime files
+* Local pipeline artifacts
+
+The next start operation recreates the environment from the version-controlled configuration.
+
+# 6. Results
+
+## 6.1 Pipeline Execution
+
+<img src="assets/logos/airflow_ui.png" alt="Apache Airflow DAG execution" width="1000">
+
+Apache Airflow orchestrates the workflow from data ingestion through model evaluation. The DAG graph above shows the successful execution of the complete pipeline.
+
+## 6.2 Model Evaluation Dashboard
 
 <img src="assets/logos/superset_ui.png" alt="Apache Superset dashboard" width="1000">
 
-## 5. Reflections and Next Steps
+The dashboard summarizes model performance and compares the trained XGBoost classifier against a majority-class baseline.
 
-#### Key Lessons
+Key evaluation artifacts include:
 
-Building this project reinforced that modern data engineering is less about individual tools and more about how independent components work together. Benchmarking the alternatives and measuring resource usage directly led to better architectural decisions than relying on assumptions.
+- Baseline vs. model performance across Accuracy, Balanced Accuracy, F1, ROC AUC, and PR AUC
+- Confusion matrix showing classification outcomes
+- Feature importance rankings
+- ROC curve visualization
 
-#### Trade-offs and Limitations
+The results show that while overall accuracy improves only modestly over the baseline due to class imbalance, the model substantially improves Balanced Accuracy, F1 score, ROC AUC, and PR AUC, indicating a much stronger ability to identify purchasing sessions.
 
-The platform demonstrates a local batch workflow rather than a production deployment. It does not yet address distributed execution, continuous ingestion, automated model retraining, or cloud security and governance.
+# 7. Reflections and Next Steps
 
-#### Future Directions
+## 7.1 Key Lessons
 
-The next natural step is to deploy the same architecture in a cloud environment using managed services and Infrastructure as Code. From there, the platform could evolve toward streaming ingestion and real-time analytics.
+This project reinforced that modern data engineering is less about individual tools and more about how independent components work together.
+
+One unexpected lesson was the importance of diagrams. As the architecture grew, diagrams became essential for understanding the system and communicating design decisions. Often, the act of drawing a workflow or architecture diagram exposed gaps in my own understanding.
+
+The project also highlighted the value of benchmarking. Measuring performance and resource usage directly led to better architectural decisions than relying on assumptions.
+
+The setup and reset scripts became part of the engineering product: a portfolio reviewer can start the full platform, inspect the outputs, and tear everything down without manually configuring each service.
+
+## 7.2 Trade-offs and Limitations
+
+The architecture prioritizes openness, reproducibility, and efficient local execution over operational simplicity.
+
+Benefits include:
+
+* Open table formats and storage interfaces
+* Decoupled storage, metadata, and compute
+* Reproducible containerized deployment
+* Efficient analytical processing on commodity hardware
+
+Trade-offs include:
+
+* Higher architectural complexity than a single database solution
+* Additional orchestration overhead
+* Longer setup times
+* More moving parts to operate and troubleshoot
+
+## 7.3 Future Directions
+
+This local platform became the baseline for [Project 2](../project-2-cloud-lakehouse/), which migrates the same lakehouse workflow to Google Cloud using Infrastructure as Code and managed services.
+
+Future projects will build on this foundation by exploring distributed processing with Spark, streaming ingestion, automated model retraining, and real-time data products.
