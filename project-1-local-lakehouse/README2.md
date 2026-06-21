@@ -6,7 +6,7 @@ An end-to-end data and machine learning platform that transforms 42 million e-co
 
 ## Table of Contents
 
-|||
+|Section|Contents|
 |---|---|
 | **[1. What This Project Does](#1-what-this-project-does)**         | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Pipeline                                           |
 | **[2. Follow One Session](#2-follow-one-session)**                 | 2.1 Raw Clickstream Event<br>2.2 Curated Session-Level Feature Store<br>2.3 Model Prediction<br>2.4 Model Evaluation |
