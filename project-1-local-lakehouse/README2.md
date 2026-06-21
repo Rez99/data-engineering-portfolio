@@ -127,9 +127,10 @@ Example prediction:
 
 ```json
 {
-  "user_session": "72d76fde-8bb3-4e00-8c23-a032dfed738c",
-  "purchase_probability": 0.18,
-  "predicted_conversion": false
+  "user_session": "88fafe35-4491-4c1c-aa0a-97237eb7d3e1",
+  "purchase_probability": 0.663804,
+  "predicted_conversion": true,
+  "actual_conversion": true
 }
 ```
 
@@ -141,10 +142,11 @@ Example metrics:
 
 ```json
 {
-  "roc_auc": 0.99,
-  "accuracy": 0.94,
-  "balanced_accuracy": 0.75,
-  "f1_true": 0.41
+  "roc_auc": 0.809872,
+  "accuracy": 0.937585,
+  "balanced_accuracy": 0.642014,
+  "f1_true": 0.392943,
+  "pr_auc": 0.378796
 }
 ```
 
