@@ -371,17 +371,16 @@ Apache Airflow orchestrates the workflow from data ingestion through model evalu
 
 <img src="assets/logos/superset_ui.png" alt="Apache Superset dashboard" width="1000">
 
-The dashboard visualizes the evaluation artifacts produced by the machine learning workflow, including:
+The dashboard summarizes model performance and compares the trained XGBoost classifier against a majority-class baseline.
 
-- ROC AUC
-- Accuracy
-- Confusion Matrix
-- Feature Importance
-- Baseline Model Comparison
+Key evaluation artifacts include:
 
-These artifacts provide both quantitative measures of model performance and qualitative insight into the factors that influence purchase conversion.
+- Baseline vs. model performance across Accuracy, Balanced Accuracy, F1, ROC AUC, and PR AUC
+- Confusion matrix showing classification outcomes
+- Feature importance rankings
+- ROC curve visualization
 
-The dashboard also compares XGBoost against a majority-class baseline, which is important because purchase conversion is an imbalanced classification problem.
+The results show that while overall accuracy improves only modestly over the baseline due to class imbalance, the model substantially improves Balanced Accuracy, F1 score, ROC AUC, and PR AUC, indicating a much stronger ability to identify purchasing sessions.
 
 # 7. Reflections and Next Steps
 
