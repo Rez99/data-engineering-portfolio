@@ -8,11 +8,11 @@ An end-to-end data and machine learning platform that transforms 42 million e-co
 
 |Section|Contents|
 |---|---|
-| **[1. What This Project Does](#1-what-this-project-does)**         | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Pipeline                                           |
+| **[1. What This Project Does](#1-what-this-project-does)**         | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow                                           |
 | **[2. Follow One Session](#2-follow-one-session)**                 | 2.1 Raw Clickstream Event<br>2.2 Curated Session-Level Feature Store<br>2.3 Model Prediction<br>2.4 Model Evaluation |
-| **[3. Architecture](#3-architecture)**                             | 3.1 Detailed Pipeline Flow<br>3.2 Technology Stack                                                                   |
+| **[3. Architecture](#3-architecture)**                             | 3.1 Pipeline Sequence<br>3.2 Technology Stack                                                                        |
 | **[4. Why These Choices](#4-why-these-choices)**                   | 4.1 Benchmarking the Alternatives<br>4.2 Resource-Aware Engineering                                                  |
-| **[5. Deployment](#5-deployment)**                                 | 5.1 Clone<br>5.2 Repository Structure<br>5.3 Start<br>5.4 Services<br>5.5 Stop                                       |
+| **[5. Deployment](#5-deployment)**                                 | 5.1 Clone<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Platform Services<br>5.5 Teardown                         |
 | **[6. Results](#6-results)**                                       | 6.1 Pipeline Execution<br>6.2 Model Evaluation Dashboard                                                             |
 | **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 Key Lessons<br>7.2 Trade-offs and Limitations<br>7.3 Future Directions                                           |
 
@@ -31,7 +31,7 @@ The project explores three questions:
 
 ## 1.2 Inputs and Outputs
 
-### Input
+### Inputs
 
 The pipeline uses the October 2019 file from [**Kaggle's E-Commerce Behavior Data from Multi-Category Store**](https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store) dataset. Each row represents a user-product interaction from a large multi-category online store.
 
@@ -56,7 +56,7 @@ The platform produces the following artifacts:
 | Evaluation Metrics | Quantify model performance using ROC AUC, confusion matrix, and related measures |
 | Superset Dashboard | Visualize model performance and explain model behavior through interactive dashboards |
 
-## 1.3 End-to-End Pipeline
+## 1.3 End-to-End Workflow
 
 The workflow below summarizes the movement of data through the platform.
 
@@ -151,7 +151,7 @@ These evaluation artifacts are published to the lakehouse and visualized through
 
 # 3. Architecture
 
-## 3.1 Detailed Pipeline Flow
+## 3.1 Pipeline Sequence
 
 The architecture follows an ELT (Extract, Load, Transform) pattern in which raw events are first loaded into the lakehouse and transformed afterward using dbt.
 
@@ -294,7 +294,7 @@ pipeline/
     └── superset_assets/    # Version-controlled dashboard definitions
 ```
 
-## 5.3 Start
+## 5.3 Setup
 
 ### Change to the Project Directory
 
@@ -302,7 +302,7 @@ pipeline/
 cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
 ```
 
-### Start the Platform
+### Deploy the Platform
 
 ```bash
 bash setup.sh
@@ -320,7 +320,7 @@ The default pipeline now processes the full 42-million-row October 2019 dataset,
 
 <img src="assets/logos/setup.png" alt="Automated deployment in progress" width="700">
 
-## 5.4 Services
+## 5.4 Platform Services
 
 After a successful deployment, the following services are available locally:
 
@@ -331,7 +331,7 @@ After a successful deployment, the following services are available locally:
 | Apache Polaris  | Iceberg catalog              | http://localhost:8181 | API only                        |
 | Apache Superset | Model evaluation dashboard   | http://localhost:8088 | `admin` / `admin`               |
 
-## 5.5 Stop
+## 5.5 Teardown
 
 ### Change to the Project Directory
 
@@ -339,7 +339,7 @@ After a successful deployment, the following services are available locally:
 cd data-engineering-portfolio/project-1-local-lakehouse/pipeline/scripts
 ```
 
-### Stop the Platform
+### Destroy the Platform
 
 ```bash
 bash reset.sh
@@ -446,8 +446,10 @@ The key insight was that Parquet solved the performance problem, while Iceberg s
 Initially, I viewed Polaris as simply an implementation detail required by Iceberg. Building the platform revealed that Iceberg needs only a relatively small set of catalog capabilities, while Polaris provides a broader metadata layer.
 
 ```text
-          Polaris Capabilities
+          Venn Diagram
 ┌────────────────────────────────┐
+│      Polaris Capabilities      |
+|                                |
 │ Access Control                 │
 │ Multi-Catalog Management       │
 │ Multi-Engine Interoperability  │

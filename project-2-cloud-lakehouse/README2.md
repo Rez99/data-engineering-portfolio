@@ -7,13 +7,13 @@ An end-to-end cloud-native data and machine learning platform that provisions it
 
 | Section | Contents |
 | ------- | -------- |
-| **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Platform Flow |
+| **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
 | **[2. Follow One Deployment](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
 | **[3. Architecture](#3-architecture)** | 3.1 Local-to-Cloud Component Mapping<br>3.2 Cloud Resource Inventory<br>3.3 Deployment Sequence<br>3.4 Provisioning Duration |
 | **[4. Why These Choices](#4-why-these-choices)** | 4.1 Why Open Lakehouse Over Managed Warehousing?<br>4.2 Why Polaris?<br>4.3 Why Cloud Workflows Instead of Airflow?<br>4.4 Why Ephemeral Dataproc?<br>4.5 Why Terraform? |
-| **[5. Deployment](#5-deployment)** | 5.1 Prerequisites<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Services<br>5.5 Teardown |
+| **[5. Deployment](#5-deployment)** | 5.1 Prerequisites<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Platform Services<br>5.5 Teardown |
 | **[6. Cost Analysis](#6-cost-analysis)** | |
-| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 How should a local lakehouse architecture be translated into the cloud?<br>7.2 How can AI-assisted development accelerate complex infrastructure projects?<br>7.3 How can cloud-native services be adopted without surrendering data portability? |
+| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 How should a local lakehouse architecture be translated into the cloud?<br>7.2 How can AI-assisted development accelerate complex infrastructure projects?<br>7.3 How can cloud-native services be adopted without surrendering data portability?<br>7.4 Future Directions |
 
 # 1. What This Project Does
 
@@ -64,7 +64,7 @@ The platform produces the following artifacts:
 | Model and Evaluation Artifacts | Publish trained models, predictions, and performance metrics            |
 | Superset Dashboard             | Visualize model performance through interactive dashboards              |
 
-## 1.3 End-to-End Platform Flow
+## 1.3 End-to-End Workflow
 
 The workflow below summarizes the major stages involved in provisioning the platform, executing the data pipeline, and publishing analytical outputs.
 
@@ -495,6 +495,6 @@ Cloud Storage owns the data, Iceberg owns the table format, Polaris owns the cat
 
 The result is a cloud-native architecture that remains portable. The same lakehouse design could be migrated to another cloud provider or compute platform while preserving the underlying data and metadata layers.
 
-### Next Steps
+## 7.4 Future Directions
 
 Project 3 extends the platform into streaming and AI-oriented workloads, introducing event-driven processing and vector-based retrieval patterns commonly used in modern data and machine learning systems.
