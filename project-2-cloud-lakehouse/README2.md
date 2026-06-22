@@ -9,11 +9,11 @@ An end-to-end cloud-native data and machine learning platform that provisions it
 | ------- | -------- |
 | **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Platform Flow |
 | **[2. Follow One Deployment](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
-| **[3. Architecture](#3-architecture)** | 3.1 Local-to-Cloud Component Mapping<br>3.2 End-to-End Pipeline Flow<br>3.3 Cloud Resource Inventory<br>3.4 Deployment Sequence<br>3.5 Provisioning Duration |
+| **[3. Architecture](#3-architecture)** | 3.1 Local-to-Cloud Component Mapping<br>3.2 Cloud Resource Inventory<br>3.3 Deployment Sequence<br>3.4 Provisioning Duration |
 | **[4. Why These Choices](#4-why-these-choices)** | 4.1 Why Open Lakehouse Over Managed Warehousing?<br>4.2 Why Polaris?<br>4.3 Why Cloud Workflows Instead of Airflow?<br>4.4 Why Ephemeral Dataproc?<br>4.5 Why Terraform? |
 | **[5. Deployment](#5-deployment)** | 5.1 Prerequisites<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Services<br>5.5 Teardown |
 | **[6. Cost Analysis](#6-cost-analysis)** | |
-| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 How can a local lakehouse be migrated to the cloud?<br>7.2 How can cloud infrastructure become reproducible?<br>7.3 How can you adopt cloud-native services without surrendering data portability? |
+| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 How should a local lakehouse architecture be translated into the cloud?<br>7.2 How can AI-assisted development accelerate complex infrastructure projects?<br>7.3 How can cloud-native services be adopted without surrendering data portability? |
 
 # 1. What This Project Does
 
@@ -27,6 +27,8 @@ This project asks a different question:
 
 This project extends the local lakehouse into a cloud-native environment using Infrastructure as Code, managed compute, and open data standards — without rebuilding around vendor-specific services.
 
+The machine learning workflow predicts whether a user session will convert into a purchase.
+
 The project explores three questions:
 
 1. How should a local lakehouse architecture be translated into the cloud?
@@ -39,6 +41,8 @@ The project explores three questions:
 ### Inputs
 
 The platform combines infrastructure definitions, deployment artifacts, and analytical workloads into a single reproducible system.
+
+For cost-conscious cloud development, Project 2 processes a deterministic 1,000,000-row subset of the same October 2019 clickstream dataset used in Project 1.
 
 | Input                   | Purpose                                                           |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -75,7 +79,7 @@ flowchart LR
 
 # 2. Follow One Deployment
 
-This section follows a single execution of `bash scripts/setup.sh` from an empty Google Cloud project to a fully operational cloud lakehouse platform.
+This section follows a single execution of `bash scripts/setup.sh` from a clean Google Cloud project environment to a fully operational cloud lakehouse platform.
 
 The deployment proceeds through four stages:
 
@@ -138,21 +142,7 @@ Project 2 preserves the core architecture from Project 1 while replacing local i
 
 The migration preserves the separation between storage, metadata, compute, and consumption layers while replacing local services with managed cloud equivalents.
 
-## 3.2 End-to-End Pipeline Flow
-
-The architecture follows the same high-level ELT pattern introduced in Project 1. Infrastructure is provisioned using Terraform, platform services are initialized, and an orchestrated Spark workflow executes the data pipeline before publishing analytical outputs.
-
-```mermaid
-flowchart LR
-    A[Terraform]
-    --> B[Cloud Platform]
-    --> C[Workflow]
-    --> D[Spark Pipeline]
-    --> E[Iceberg Lakehouse]
-    --> F[Superset Dashboard]
-```
-
-## 3.3 Cloud Resource Inventory
+## 3.2 Cloud Resource Inventory
 
 Terraform provisions the persistent cloud services, while the Spark cluster is created temporarily by the workflow at runtime.
 
@@ -182,7 +172,7 @@ Terraform provisions the persistent cloud services, while the Spark cluster is c
  └───────────────────────┘  └───────────────────────┘  └────────────────────────────────┘             
                                                                                         
 ```
-## 3.4 Deployment Sequence
+## 3.3 Deployment Sequence
 
 The deployment flow separates infrastructure provisioning, platform initialization, pipeline execution, and dashboard configuration.
 
@@ -240,7 +230,7 @@ sequenceDiagram
     Terraform->>GCP: Provision Superset Assets
     end
 ```
-## 3.5 Provisioning Duration
+## 3.4 Provisioning Duration
 
 Provisioning times vary significantly across resources. Most services are created within seconds, while Cloud SQL accounts for the majority of deployment time.
 
@@ -387,6 +377,8 @@ project-2-cloud-lakehouse/
     └── superset/            # Superset assets
 ```
 
+Planning artifacts are captured in `docs/`, including Architecture Decision Records (ADRs), architecture documentation, and the project specification.
+
 ## 5.3 Setup
 
 ### Change to the Project Directory
@@ -460,7 +452,7 @@ Nearly free
     Cloud Storage
 ```
 
-Cloud SQL was the primary persistent cost because both Polaris and Superset require relational metadata stores. Dataproc was the primary execution cost because Spark clusters are created on demand for pipeline execution. Cloud Run and Cloud Storage contributed little to the overall spend due to scale-to-zero behavior, free-tier allowances, and the relatively small demonstration dataset.
+Cloud SQL was the primary persistent cost because both Polaris and Superset require relational metadata stores. Dataproc was the primary execution cost because Spark clusters are created on demand for pipeline execution. Cloud Run and Cloud Storage contributed little to the overall spend due to scale-to-zero behavior, free-tier allowances, and the bounded 1,000,000-row demonstration subset.
 
 This cost distribution reinforces the project's broader design philosophy: persist only metadata and storage, and create compute resources only when they are needed.
 
@@ -470,7 +462,7 @@ This cost distribution reinforces the project's broader design philosophy: persi
 
 ✅ **By replacing infrastructure, not architecture.**
 
-Most of the core lakehouse concepts survived the migration unchanged. Iceberg remained the table format, Polaris remained the catalog, dbt remained the transformation framework, and Superset remained the consumption layer. The primary changes were infrastructural: Cloud Storage replaced local object storage, Cloud Run replaced local containers, and Spark replaced DuckDB.
+Most of the core lakehouse concepts survived the migration unchanged. Iceberg remained the table format, Polaris remained the catalog, dbt remained the transformation framework, and Superset remained the consumption layer. The primary changes were infrastructural: Cloud Storage replaced local object storage, Cloud Run replaced locally hosted platform containers, and Spark replaced DuckDB.
 
 The project demonstrated that the architectural principles introduced in Project 1 were largely independent of where the platform was deployed.
 
@@ -488,6 +480,8 @@ Complexity           █████                         ██████�
 ```
 
 Codex dramatically reduced the effort required to explore cloud services, generate Terraform configurations, integrate platform components, and troubleshoot unfamiliar technologies. Tasks that would previously have required extensive documentation review could be explored and implemented rapidly.
+
+Qualitatively, Codex shifted the bottleneck from implementation effort toward architectural decision-making and system understanding.
 
 The tradeoff was that implementation ceased to be the primary bottleneck. As generating solutions became easier, architectural decisions became more important. Clear milestones, explicit acceptance criteria, and deliberate scope management were essential to prevent complexity from expanding faster than understanding.
 
