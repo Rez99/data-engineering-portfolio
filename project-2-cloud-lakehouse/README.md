@@ -468,22 +468,36 @@ The project demonstrated that the architectural principles introduced in Project
 
 ## 7.2 How can AI-assisted development accelerate complex infrastructure projects?
 
-✅ **AI reduced implementation effort but increased architectural complexity.**
+✅ **AI reduced implementation effort and increased the value of refactoring.**
 
 ```text
-                     Without AI                    With AI
+                     Historically                  With AI
 
-Time Spent Building  ████████████████████          ██
+Build Time           ████████████████              ███
 
 Architectural
-Complexity           █████                         ████████████████████
+Complexity           ███                           ████████████████
+
+Refactoring Time     ███                           ████████████████
 ```
 
 Codex dramatically reduced the effort required to explore cloud services, generate Terraform configurations, integrate platform components, and troubleshoot unfamiliar technologies. Tasks that would previously have required extensive documentation review could be explored and implemented rapidly.
 
-Qualitatively, Codex shifted the bottleneck from implementation effort toward architectural decision-making and system understanding.
+```text
+Plan
+  ↓
+Build
+  ↓
+[Working System]
+  ↓
+Understand
+  ↓
+Simplify
+```
 
-The tradeoff was that implementation ceased to be the primary bottleneck. As generating solutions became easier, architectural decisions became more important. Clear milestones, explicit acceptance criteria, and deliberate scope management were essential to prevent complexity from expanding faster than understanding.
+The first implementation successfully deployed infrastructure and executed the pipeline, but the most valuable architectural decisions emerged afterward. Once the system was working, it became possible to understand the platform as a whole and simplify it.
+
+For example, Spark workloads were consolidated into a single cluster lifecycle, replacing a more fragmented design. The resulting architecture was easier to reason about and better aligned with the conceptual model of the pipeline.
 
 The most valuable forcing function was creating the deployment sequence diagram. By tracing every interaction and asking what component was responsible for each action, complexity became manageable once it was organized into a coherent mental model.
 
