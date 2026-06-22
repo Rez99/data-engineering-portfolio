@@ -5,15 +5,15 @@ An end-to-end cloud-native data and machine learning platform that provisions it
 ---
 
 
-| Section                           | Contents                                                                                                                                                                                               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1. What This Project Does**     | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Deployment Flow                                                                                                                      |
-| **2. Follow One Deployment**      | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard                                                                                              |
-| **3. Architecture** | 3.1 Local-to-Cloud Component Mapping<br>3.2 End-to-End Pipeline Flow<br>3.3 Cloud Resource Inventory<br>3.4 Deployment Sequence<br>3.5 Provisioning Duration |
-| **4. Why These Choices**          | 4.1 Why Not BigQuery?<br>4.2 Why Polaris?<br>4.3 Why Cloud Workflows Instead of Airflow?<br>4.4 Why Ephemeral Dataproc?<br>4.5 Why Terraform?                                                        |
-| **5. Deployment**                 | 5.1 Prerequisites<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Services<br>5.5 Teardown                                                                                                             |
-| **6. Cost Analysis**                                                                                                      |
-| **7. Reflections and Next Steps** | 7.1 How can a local lakehouse be migrated to the cloud?<br>7.2 How can cloud infrastructure become reproducible?<br>7.3 How can you adopt cloud-native services without surrendering data portability? |
+| Section | Contents |
+| ------- | -------- |
+| **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Platform Flow |
+| **[2. Follow One Deployment](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
+| **[3. Architecture](#3-architecture)** | 3.1 Local-to-Cloud Component Mapping<br>3.2 End-to-End Pipeline Flow<br>3.3 Cloud Resource Inventory<br>3.4 Deployment Sequence<br>3.5 Provisioning Duration |
+| **[4. Why These Choices](#4-why-these-choices)** | 4.1 Why Open Lakehouse Over Managed Warehousing?<br>4.2 Why Polaris?<br>4.3 Why Cloud Workflows Instead of Airflow?<br>4.4 Why Ephemeral Dataproc?<br>4.5 Why Terraform? |
+| **[5. Deployment](#5-deployment)** | 5.1 Prerequisites<br>5.2 Repository Structure<br>5.3 Setup<br>5.4 Services<br>5.5 Teardown |
+| **[6. Cost Analysis](#6-cost-analysis)** | |
+| **[7. Reflections and Next Steps](#7-reflections-and-next-steps)** | 7.1 How can a local lakehouse be migrated to the cloud?<br>7.2 How can cloud infrastructure become reproducible?<br>7.3 How can you adopt cloud-native services without surrendering data portability? |
 
 # 1. What This Project Does
 
@@ -29,9 +29,10 @@ This project extends the local lakehouse into a cloud-native environment using I
 
 The project explores three questions:
 
-1. Which local components translate directly to cloud equivalents, and which require rethinking?
-2. How can cloud infrastructure become reproducible, auditable, and repeatable?
+1. How should a local lakehouse architecture be translated into the cloud?
+2. How can AI-assisted development accelerate complex infrastructure projects?
 3. How can cloud-native services be adopted without surrendering data portability?
+
 
 ## 1.2 Inputs and Outputs
 
@@ -109,7 +110,14 @@ Once processing completes, the Spark cluster is deleted.
 
 Finally, Superset datasets, charts, and dashboards are refreshed using the newly generated metrics.
 
-The result is a fully provisioned cloud-native lakehouse platform that can be deployed from source code using a single command.
+By the end of the deployment, a single command has:
+
+1. Provisioned cloud infrastructure.
+2. Initialized platform services.
+3. Executed the data pipeline.
+4. Published analytical outputs.
+
+The result is not merely a collection of cloud resources, but a fully operational cloud-native lakehouse platform.
 
 # 3. Architecture
 
@@ -301,13 +309,17 @@ Polaris
 Spark
 ```
 
-This separates storage, metadata, and compute, allowing each layer to evolve independently rather than becoming coupled to a single analytical engine.
+BigQuery collapses storage, metadata, and compute into a single managed warehouse. This project deliberately keeps those concerns separate: Cloud Storage owns the data, Iceberg owns the table format, Polaris owns the catalog, and Spark provides compute.
+
+That choice makes the architecture less simple than a single managed warehouse, but more portable. The priority was multi-engine interoperability and reduced vendor lock-in rather than the shortest path to a working SQL endpoint.
 
 ## 4.2 Why Polaris?
 
 Project 1 showed that catalogs are more than an Iceberg requirement.
 
-Polaris provides a dedicated metadata layer between storage and compute, allowing Spark and other engines to interact with the same Iceberg tables through a consistent interface. Retaining Polaris preserved this architectural separation in the cloud.
+Polaris is not merely a REST implementation required by Iceberg. It is a dedicated metadata layer that manages catalogs, namespaces, permissions, and engine interoperability.
+
+Retaining Polaris in Project 2 preserved the separation between metadata and compute. Spark can create and query Iceberg tables without becoming the owner of the catalog itself.
 
 ## 4.3 Why Cloud Workflows Instead of Airflow?
 
@@ -331,7 +343,7 @@ This reduces idle cost while preserving the ability to scale compute independent
 
 A primary goal of Project 2 was reproducibility.
 
-Terraform allows infrastructure to be version controlled alongside application code so that a reviewer can provision, execute, and destroy the platform using documented commands rather than manual cloud-console configuration.
+Terraform allows infrastructure to be version controlled alongside application code so that a reviewer can provision, inspect, execute, and destroy the platform using documented commands rather than manual cloud-console configuration. This made the platform auditable and repeatable, not merely deployable.
 
 # 5. Deployment
 
@@ -454,24 +466,41 @@ This cost distribution reinforces the project's broader design philosophy: persi
 
 # 7. Reflections and Next Steps
 
-## 7.1 How can a local lakehouse be migrated to the cloud?
+## 7.1 How should a local lakehouse architecture be translated into the cloud?
 
-✅ **Most lakehouse concepts survive the migration unchanged.**
+✅ **By replacing infrastructure, not architecture.**
 
-Iceberg remained the table format, Polaris remained the catalog, dbt remained the transformation framework, and Superset remained the consumption layer. The primary changes were infrastructural: Cloud Storage replaced local object storage, Cloud Run replaced local containers, and Spark replaced DuckDB.
+Most of the core lakehouse concepts survived the migration unchanged. Iceberg remained the table format, Polaris remained the catalog, dbt remained the transformation framework, and Superset remained the consumption layer. The primary changes were infrastructural: Cloud Storage replaced local object storage, Cloud Run replaced local containers, and Spark replaced DuckDB.
 
-## 7.2 How can cloud infrastructure become reproducible?
+The project demonstrated that the architectural principles introduced in Project 1 were largely independent of where the platform was deployed.
 
-✅ **Infrastructure becomes reproducible when it is treated as code.**
+## 7.2 How can AI-assisted development accelerate complex infrastructure projects?
 
-Terraform allowed infrastructure, permissions, and deployment configuration to be managed as version-controlled code. One important lesson was that provisioning resources and initializing applications are separate concerns, requiring both infrastructure deployment and bootstrap workflows.
+✅ **AI reduced implementation effort but increased architectural complexity.**
 
-## 7.3 How can you adopt cloud-native services without surrendering data portability?
+```text
+                     Without AI                    With AI
 
-✅ **Managed infrastructure and open data architectures are not mutually exclusive.**
+Time Spent Building  ████████████████████          ██
 
-The platform uses GCP-managed infrastructure while keeping the data stack open. Cloud Storage owns the data, Iceberg owns the table format, Polaris owns the catalog, and Spark provides compute. This separation allows managed services to simplify operations without coupling the platform to a proprietary analytical engine.
+Architectural
+Complexity           █████                         ████████████████████
+```
+
+Codex dramatically reduced the effort required to explore cloud services, generate Terraform configurations, integrate platform components, and troubleshoot unfamiliar technologies. Tasks that would previously have required extensive documentation review could be explored and implemented rapidly.
+
+The tradeoff was that implementation ceased to be the primary bottleneck. As generating solutions became easier, architectural decisions became more important. Clear milestones, explicit acceptance criteria, and deliberate scope management were essential to prevent complexity from expanding faster than understanding.
+
+The most valuable forcing function was creating the deployment sequence diagram. By tracing every interaction and asking what component was responsible for each action, complexity became manageable once it was organized into a coherent mental model.
+
+## 7.3 How can cloud-native services be adopted without surrendering data portability?
+
+✅ **By separating storage, metadata, and compute through open standards.**
+
+Cloud Storage owns the data, Iceberg owns the table format, Polaris owns the catalog, and Spark provides compute. This separation allows managed cloud services to simplify operations without coupling the platform to a proprietary analytical engine.
+
+The result is a cloud-native architecture that remains portable. The same lakehouse design could be migrated to another cloud provider or compute platform while preserving the underlying data and metadata layers.
 
 ### Next Steps
 
-Project 3 extends the platform into streaming and AI-oriented workloads, introducing event-driven processing and vector-based retrieval patterns.
+Project 3 extends the platform into streaming and AI-oriented workloads, introducing event-driven processing and vector-based retrieval patterns commonly used in modern data and machine learning systems.
