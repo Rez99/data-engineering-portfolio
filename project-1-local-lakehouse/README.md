@@ -153,11 +153,10 @@ These evaluation artifacts are published to the lakehouse and visualized through
 
 ## 3.1 Detailed Pipeline Flow
 
-The pipeline runs as four sequential Airflow DAGs. The first downloads the raw 
-clickstream data into object storage. The second loads it into cataloged Iceberg 
-tables via an intermediate Parquet conversion. The third runs dbt transformation 
-models that aggregate raw events into a session-level feature store. The fourth 
-trains and evaluates the XGBoost classifier and publishes the model artifacts. 
+The architecture follows an ELT (Extract, Load, Transform) pattern in which raw events are first loaded into the lakehouse and transformed afterward using dbt.
+
+The pipeline runs as four sequential Airflow DAGs. The first downloads the raw clickstream data into object storage. The second loads it into cataloged Iceberg tables via an intermediate Parquet conversion. The third runs dbt models that aggregate raw events into a session-level feature store. The fourth trains and evaluates the XGBoost classifier and publishes the model artifacts.
+
 The diagram below traces these stages and the interactions between components.
 
 ```mermaid
@@ -383,13 +382,110 @@ The results show that while overall accuracy improves only modestly over the bas
 
 ## 7.1 Key Lessons
 
-This project reinforced that modern data engineering is less about individual tools and more about how independent components work together.
+### 1. How can large analytical datasets be processed efficiently on commodity hardware?
 
-One unexpected lesson was the importance of diagrams. As the architecture grew, diagrams became essential for understanding the system and communicating design decisions. Often, the act of drawing a workflow or architecture diagram exposed gaps in my own understanding.
+The answer is not necessarily more hardware. Modern analytical systems achieve scale through efficient storage formats, metadata, and query engines that reduce the amount of data that must be read and processed.
 
-The project also highlighted the value of benchmarking. Measuring performance and resource usage directly led to better architectural decisions than relying on assumptions.
+✅ **Parquet was both smaller and faster than expected.**
 
-The setup and reset scripts became part of the engineering product: a portfolio reviewer can start the full platform, inspect the outputs, and tear everything down without manually configuring each service.
+One goal of this project was to develop an intuition for concepts such as Parquet and columnar storage. The benchmarks made their value tangible: Parquet files were both smaller than compressed CSV files and orders of magnitude faster to query.
+
+```text
+events.parquet
+├─ column statistics
+│  ├─ min(price)
+│  ├─ max(price)
+│  └─ null_count(price)
+├─ row groups
+└─ column chunks
+```
+
+This allows analytical engines such as DuckDB to skip large portions of a dataset without reading them.
+
+✅ **Large-scale analytics became far more accessible than I expected.**
+
+Before this project, I would have viewed a 42-million-row dataset as something that required specialized infrastructure. In practice, modern columnar formats and analytical engines made it possible to explore, transform, and model the data efficiently on a laptop.
+
+✅ **Storage format influences both performance and cost.**
+
+The project demonstrated that analytical scale comes as much from architecture and storage formats as from compute resources. Efficient storage layouts reduce the amount of data that must be read and processed, which translates directly into lower infrastructure costs in cloud environments.
+
+### 2. What advantages does a lakehouse provide over traditional databases and file-based analytics?
+
+The primary advantage of a lakehouse is flexibility. By separating storage, metadata, and compute, data can outlive any individual processing engine, database, or cloud service.
+
+✅ **The project clarified the difference between Parquet and a lakehouse.**
+
+The benchmarks showed that Parquet was responsible for most of the performance gains.
+
+```text
+Object Storage
+    +
+Parquet
+    =
+Fast analytical files
+```
+
+However, a lakehouse adds capabilities beyond raw performance.
+
+```text
+Object Storage
+    +
+Iceberg
+    =
+Fast analytical files
+    + ACID transactions
+    + Schema evolution
+    + Table abstraction
+```
+
+The key insight was that Parquet solved the performance problem, while Iceberg solved the data management problem.
+
+✅ **Catalogs are more than an Iceberg requirement.**
+
+Initially, I viewed Polaris as simply an implementation detail required by Iceberg. Building the platform revealed that Iceberg needs only a relatively small set of catalog capabilities, while Polaris provides a broader metadata layer.
+
+```text
+          Polaris Capabilities
+┌────────────────────────────────┐
+│ Access Control                 │
+│ Multi-Catalog Management       │
+│ Multi-Engine Interoperability  │
+│                                │
+│   ┌────────────────────────┐   │
+│   │     Iceberg Needs      │   │
+│   │                        │   │
+│   │ Catalog API            │   │
+│   │ Namespace Management   │   │
+│   │ Table Metadata         │   │
+│   └────────────────────────┘   │
+└────────────────────────────────┘
+```
+
+This helped me understand why modern data platforms increasingly treat metadata as a first-class architectural concern.
+
+✅ **Open architectures preserve optionality.**
+
+By storing data in open formats and managing metadata independently, the platform remains compatible with multiple query engines and deployment environments. This reduces vendor lock-in and makes it easier to evolve the architecture over time without rewriting pipelines or migrating the underlying data.
+
+### 3. How can data engineering, analytics engineering, and machine learning be combined into a reproducible end-to-end workflow?
+
+The key is not mastering every technology in isolation. It is developing a mental model of how the components fit together and where responsibilities are divided across the system.
+
+✅ **Building the platform required systems thinking.**
+
+Prior to this project, the mechanics of modern data platforms felt like a black box. I understood many of the individual tools, but not how they communicated with one another or how data moved through the system. Building the platform transformed those abstract concepts into a concrete architecture.
+
+✅ **Diagrams became an essential engineering tool.**
+
+As the project grew, I repeatedly returned to diagrams to establish reference points and orient myself within the system. Whether reasoning about Docker images and containers, storage and catalogs, or pipeline stages, visualizing the architecture proved far more effective than attempting to hold the entire system in my head.
+
+✅ **Complexity became manageable once I had a mental model.**
+
+At first, concepts such as containers, catalogs, orchestration, and storage layers felt disconnected. Over time, diagrams and architectural boundaries provided the mental model needed to reason about the platform. The lesson was that understanding a system does not require holding every implementation detail in your head at once.
+
+
+
 
 ## 7.2 Trade-offs and Limitations
 
