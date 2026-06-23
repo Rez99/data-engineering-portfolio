@@ -483,6 +483,17 @@ Refactoring Time     ███                           ███████�
 
 Codex dramatically reduced the effort required to explore cloud services, generate Terraform configurations, integrate platform components, and troubleshoot unfamiliar technologies. Tasks that would previously have required extensive documentation review could be explored and implemented rapidly.
 
+The acceleration worked best when the project was broken into small, independently verifiable milestones. The full milestone plan lives in [`docs/PROJECT_2_SPEC.md`](docs/PROJECT_2_SPEC.md); for example, the Load milestone was managed as a sequence of explicit deliverables:
+
+| Mini-milestone | Deliverable | Acceptance criterion | Status |
+| --- | --- | --- | --- |
+| **M2.1 Deploy Polaris** | Cloud SQL, bootstrap job, and Polaris Cloud Run service. | Polaris is healthy and can issue a root OAuth token. | 🟢 Completed |
+| **M2.2 Configure warehouse** | Polaris catalog backed by the GCS Iceberg warehouse. | A namespace and test table can be created through Polaris. | 🟢 Completed |
+| ... | ... | ... | ... |
+| **M2.4 Run the load** | Spark loads CSV into Iceberg through Polaris. | The load completes and the temporary cluster is removed. | 🟢 Completed |
+
+This structure made AI assistance more effective: instead of asking Codex to "build a cloud lakehouse," each task had a concrete target, a stopping point, and a verification step.
+
 ```text
 Plan
   ↓
