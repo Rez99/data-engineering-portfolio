@@ -2,7 +2,7 @@
 
 This project builds a real-time clickstream pipeline for bot detection. It replays the October 2019 e-commerce clickstream dataset into Kafka, validates raw events into a clean stream, persists analytical history to Parquet, and computes live session-level bot metrics for PostgreSQL and dashboarding.
 
-The current implementation is at Milestone 1.1: the replay application can download or reuse the source CSV idempotently and accepts runtime replay options.
+The current implementation is at Milestone 1.2: the replay application can download or reuse the source CSV idempotently, accepts runtime replay options, and emits a human-readable console replay trace through temporary producer sinks.
 
 ## Current Entry Point
 

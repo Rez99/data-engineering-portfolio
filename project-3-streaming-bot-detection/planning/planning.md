@@ -292,12 +292,12 @@ flowchart TD
 ```text
 Replay: 1× | Tick: 42
 
-12:00:03.000  → 12:00:03.000   VIEW       ViewProducer
-12:00:03.120  → 12:00:03.120   CART       CartProducer
-12:00:03.250  → 12:00:08.250   PURCHASE   PurchaseProducer   [DELAYED]
-12:00:04.010  → 12:00:04.010   VIEW       ViewProducer
-12:00:03.800  → 12:00:08.800   VIEW       ViewProducer       [OUT OF ORDER]
-12:00:04.420  → 12:00:04.420   VIEW       ViewProducer       [CORRUPTED: null user_session]
+2019-10-01 12:00:03.000  → 2019-10-01 12:00:03.000   VIEW       ViewProducer
+2019-10-01 12:00:03.120  → 2019-10-01 12:00:03.120   CART       CartProducer
+2019-10-01 12:00:03.250  → 2019-10-01 12:00:08.250   PURCHASE   PurchaseProducer   [DELAYED]
+2019-10-01 12:00:04.010  → 2019-10-01 12:00:04.010   VIEW       ViewProducer
+2019-10-01 12:00:03.800  → 2019-10-01 12:00:08.800   VIEW       ViewProducer       [OUT OF ORDER]
+2019-10-01 12:00:04.420  → 2019-10-01 12:00:04.420   VIEW       ViewProducer       [CORRUPTED: null user_session]
 ```
 where:
 
@@ -565,7 +565,7 @@ python streaming/replay.py --full --speed 100x
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
 | **M1.1** | Create replay application | - A Python application `streaming/replay.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-replaypy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
-| M1.2 | Implement replay engine | - A Python implementation of the replay engine described in Section 2.1 executes successfully.<br>- Running the replay at 1× speed produces a human-readable console trace demonstrating the expected replay behaviour, including event timestamp, send timestamp, event type, producer, delayed/out-of-order events, and intentionally corrupted events when enabled. <br>- Producer workers write to a temporary console sink, allowing routing and replay behaviour to be verified independently of Kafka.<br>- The replay engine preserves the complete source schema for uncorrupted events prior to publication.| 🔴 Not started |
+| M1.2 | Implement replay engine | - A Python implementation of the replay engine described in Section 2.1 executes successfully.<br>- Running the replay at 1× speed produces a human-readable console trace demonstrating the expected replay behaviour, including event timestamp, send timestamp, event type, producer, delayed/out-of-order events, and intentionally corrupted events when enabled. <br>- Producer workers write to a temporary console sink, allowing routing and replay behaviour to be verified independently of Kafka.<br>- The replay engine preserves the complete source schema for uncorrupted events prior to publication.| 🟢 Complete |
 | M1.3	| Deploy event broker	| - Kafka (or Redpanda) is running locally.<br>- A raw `clickstream-raw` topic is created and ready to receive events.<br>- `clickstream-clean` and `clickstream-dlq` topics are created for downstream validation output.<br>- Retention policies appropriate for raw, clean, and DLQ topics are configured.| 🔴 Not started |
 | M1.4	| Publish replay events	| - Producer workers publish replay events to the raw `clickstream-raw` topic.<br>- A test consumer (or Kafka UI/CLI) verifies that all replay events are successfully received.<br>- Delayed events are observed arriving out of event-time order, demonstrating the replay engine's delay simulation.<br>- Corrupt events are observed in the raw topic when corruption simulation is enabled. | 🔴 Not started |
 
