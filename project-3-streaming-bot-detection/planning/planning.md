@@ -500,7 +500,7 @@ The project is implemented incrementally through a series of milestones. Each mi
 | Milestone | Goal | Primary Deliverable | Status |
 | --------- | ---- | ------------------- | ------ |
 | **M1** | Producer → Raw Kafka | Replay historical clickstream events into the raw `clickstream-raw` topic, including configurable replay speed, delayed/out-of-order events, and optional corrupt records. | 🟢 Complete |
-| **M2** | Validation Layer → Clean Kafka + DLQ | Consume `clickstream-raw`, validate and deserialize events, write valid records to `clickstream-clean`, and route malformed records to `clickstream-dlq`. | 🔴 Not started |
+| **M2** | Validation Layer → Clean Kafka + DLQ | Consume `clickstream-raw`, validate and deserialize events, write valid records to `clickstream-clean`, and route malformed records to `clickstream-dlq`. | 🟢 Complete |
 | **M3** | Clean Kafka → Flink → Parquet | Persist the validated event stream as a partitioned Parquet dataset for downstream analytical processing. | 🔴 Not started |
 | **M4** | Clean Kafka → Flink → Postgres | Compute live session-level bot detection metrics using stateful stream processing and continuously update an operational PostgreSQL database. | 🔴 Not started |
 | **M5** | Live Dashboard | Visualize live bot detection metrics and operational health through an interactive dashboard. | 🔴 Not started |
@@ -549,7 +549,7 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 | Milestone | Setup          | Reset          | Status |
 | --------- | -------------- | -------------- | ------ |
 | M1        | `setup_m1.sh`  | `reset_m1.sh`  | 🟢 Complete |
-| M2        | `setup_m2.sh`  | `reset_m2.sh`  | 🔴 Not started |
+| M2        | `setup_m2.sh`  | `reset_m2.sh`  | 🟢 Complete |
 | M3        | `setup_m3.sh`  | `reset_m3.sh`  | 🔴 Not started |
 | M4        | `setup_m4.sh`  | `reset_m4.sh`  | 🔴 Not started |
 | M5        | `setup_m5.sh`  | `reset_m5.sh`  | 🔴 Not started |
@@ -575,10 +575,11 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 
 | ID | Task | Acceptance Criteria | Status |
 |----|------|---------------------|--------|
-| **M2.1** | Deploy Flink | - A local Flink cluster is running successfully.<br>- The environment is ready to execute streaming jobs. | 🔴 Not started |
-| **M2.2** | Implement validation Flink job | - A Flink job continuously consumes the raw `clickstream-raw` Kafka topic.<br>- Events are deserialized and validated against the required clickstream event contract described in [Section 2.2](#22-kafka--flink--kafka-validation-layer).<br>- Valid events are written to `clickstream-clean` without changing the source schema.<br>- Malformed events are written to `clickstream-dlq` with the original payload, failure reason, and processing timestamp.<br>- Malformed events do not terminate the Flink job; valid events continue to be processed. | 🔴 Not started |
-| **M2.3** | Verify clean stream | - Running the replay engine with corruption disabled produces matching record counts between `clickstream-raw` and `clickstream-clean`.<br>- Running the replay engine with corruption enabled produces valid records in `clickstream-clean` and malformed records in `clickstream-dlq`.<br>- Redpanda Console or a CLI consumer confirms that downstream jobs can consume only validated records from `clickstream-clean`. | 🔴 Not started |
-| **M2.4** | Track validation metrics | - The validation job emits counts for valid records, invalid records, and DLQ rate.<br>- A rising DLQ rate can be observed when the replay engine corruption probability is increased. | 🔴 Not started |
+| **M2.1** | Deploy Flink cluster | - A local Flink JobManager and TaskManager are running successfully.<br>- The environment is ready to execute streaming jobs. | 🟢 Complete |
+| **M2.2** | Deploy Flink UI dashboard | - The Flink Web UI is available at `http://localhost:8081`.<br>- The dashboard displays the running Flink cluster and submitted validation job. | 🟢 Complete |
+| **M2.3** | Implement validation Flink job | - A Flink job continuously consumes the raw `clickstream-raw` Kafka topic.<br>- Events are deserialized and validated against the required clickstream event contract described in [Section 2.2](#22-kafka--flink--kafka-validation-layer).<br>- Valid events are written to `clickstream-clean` without changing the source schema.<br>- Malformed events are written to `clickstream-dlq` with the original payload, failure reason, and processing timestamp.<br>- Malformed events do not terminate the Flink job; valid events continue to be processed. | 🟢 Complete |
+| **M2.4** | Verify clean stream | - Running the replay engine with corruption disabled produces matching record counts between `clickstream-raw` and `clickstream-clean`.<br>- Running the replay engine with corruption enabled produces valid records in `clickstream-clean` and malformed records in `clickstream-dlq`.<br>- Redpanda Console or a CLI consumer confirms that downstream jobs can consume only validated records from `clickstream-clean`. | 🟢 Complete |
+| **M2.5** | Track validation metrics | - The validation job emits counts for valid records, invalid records, and DLQ rate.<br>- A rising DLQ rate can be observed when the replay engine corruption probability is increased. | 🟢 Complete |
 
 ## 3.7 M3: Clean Kafka → Flink → Parquet
 
@@ -662,6 +663,7 @@ project-3-streaming-bot-detection/
 │   │   ├── reset_m1.sh
 │   │   ├── setup_m2.sh
 │   │   ├── reset_m2.sh
+│   │   ├── verify_m2.sh
 │   │   ├── setup_m3.sh
 │   │   ├── reset_m3.sh
 │   │   ├── setup_m4.sh
@@ -677,7 +679,7 @@ project-3-streaming-bot-detection/
 │
 ├── streaming/
 │   ├── replay.py
-│   ├── flink_job_validation.py
+│   ├── flink_job_validation.sql
 │   ├── flink_job_analytics.py
 │   └── flink_job_operational.py
 │

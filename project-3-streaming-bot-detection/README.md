@@ -2,7 +2,7 @@
 
 This project builds a real-time clickstream pipeline for bot detection. It replays the October 2019 e-commerce clickstream dataset into Kafka, validates raw events into a clean stream, persists analytical history to Parquet, and computes live session-level bot metrics for PostgreSQL and dashboarding.
 
-The current implementation has completed Milestone 1: the replay application can download or reuse the source CSV idempotently, accepts runtime replay options, emits a human-readable replay trace, and publishes JSON clickstream records to the raw `clickstream-raw` topic in local Redpanda.
+The current implementation has completed Milestone 1 and implements the Milestone 2 validation layer: the replay application publishes JSON clickstream records to the raw `clickstream-raw` topic, and a Flink SQL validation job routes valid records to `clickstream-clean` and malformed records to `clickstream-dlq`.
 
 ## Current Entry Point
 
@@ -55,6 +55,29 @@ To reset the M1 broker state:
 
 ```bash
 ./infra/scripts/reset_m1.sh
+```
+
+## Validation Layer
+
+Start the M2 stack:
+
+```bash
+./infra/scripts/setup_m2.sh
+```
+
+This starts Redpanda, Redpanda Console, Flink JobManager/TaskManager, and the validation job.
+
+```text
+Flink UI: http://localhost:8081
+Redpanda Console: http://localhost:8080
+```
+
+The validation job is defined in `streaming/flink_job_validation.sql`.
+
+Report validation counts and DLQ rate:
+
+```bash
+./infra/scripts/verify_m2.sh
 ```
 
 By default, the source dataset is stored at:
