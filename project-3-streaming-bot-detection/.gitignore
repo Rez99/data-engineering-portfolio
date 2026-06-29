@@ -1,6 +1,9 @@
+.DS_Store
 .env
 *.example
+!exploration/.env.example
 *.session
 *.session-journal
 __pycache__/
 .venv/
+data/

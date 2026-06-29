@@ -1,6 +1,6 @@
-# Project 3: Live Telegram Listener
+# Exploration: Live Telegram Listener
 
-The smallest proof of concept for the first leg of the planned pipeline:
+An early proof of concept for a live text-source pipeline:
 
 ```text
 Public Telegram channels -> Telethon listener -> stdout
@@ -35,7 +35,7 @@ For example, for `https://t.me/s/sitreports`, configure `sitreports` (or use the
 From VS Code's integrated terminal:
 
 ```bash
-cd project-3-telegram-stream
+cd project-3-streaming-bot-detection/exploration
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -65,10 +65,8 @@ When a configured channel posts, the terminal prints its UTC timestamp, channel 
 ## Project layout
 
 ```text
-project-3-telegram-stream/
+project-3-streaming-bot-detection/exploration/
 ├── .env.example          # Safe configuration template
-├── .gitignore            # Keeps secrets/session state out of Git
-├── README.md             # Local setup and operating guide
 ├── requirements.txt      # Python dependencies
 └── telegram_listener.py  # Telegram connection and stdout event sink
 ```

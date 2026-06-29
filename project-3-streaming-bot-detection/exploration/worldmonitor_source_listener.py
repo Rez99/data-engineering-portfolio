@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 USGS_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson"
 NASA_EONET_URL = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=20"
-USER_AGENT = "project-3-telegram-stream/0.1 (local data discovery)"
+USER_AGENT = "project-3-streaming-bot-detection/0.1 (local data discovery)"
 
 
 @dataclass(frozen=True)
