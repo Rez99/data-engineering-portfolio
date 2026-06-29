@@ -1,0 +1,52 @@
+name: project-3-streaming-bot-detection-m1
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: p3-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+      - "9644:9644"
+    healthcheck:
+      test: ["CMD", "rpk", "topic", "list", "--brokers", "localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: p3-topic-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      BROKERS: redpanda:9092
+    entrypoint: ["/bin/bash", "/scripts/create_m1_topics.sh"]
+    volumes:
+      - ../scripts/create_m1_topics.sh:/scripts/create_m1_topics.sh:ro
+    restart: "no"
+
+volumes:
+  redpanda-data:
