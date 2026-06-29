@@ -32,6 +32,12 @@ The local Kafka bootstrap server is:
 localhost:19092
 ```
 
+Redpanda Console is available at:
+
+```text
+http://localhost:8080
+```
+
 Replay a small batch into Kafka:
 
 ```bash

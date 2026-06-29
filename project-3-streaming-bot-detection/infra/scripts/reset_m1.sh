@@ -3,8 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-COMPOSE_FILE="${PROJECT_DIR}/infra/compose/kafka.yml"
+COMPOSE_FILES=(
+  -f "${PROJECT_DIR}/infra/compose/kafka.yml"
+  -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
+)
 
-docker compose -f "${COMPOSE_FILE}" down --volumes --remove-orphans
+docker compose "${COMPOSE_FILES[@]}" down --volumes --remove-orphans
 
 echo "M1 broker state removed."
