@@ -80,6 +80,37 @@ Report validation counts and DLQ rate:
 ./infra/scripts/verify_m2.sh
 ```
 
+## Analytical Parquet Dataset
+
+Start the M3 stack:
+
+```bash
+./infra/scripts/setup_m3.sh
+```
+
+This starts the validation layer plus the analytical Flink job that consumes `clickstream-clean` and writes partitioned Parquet output to:
+
+```text
+data/analytics/clickstream
+```
+
+Verify the partitioned dataset:
+
+```bash
+./infra/scripts/verify_m3.sh
+```
+
+The analytical job is defined in `streaming/flink_job_analytics.sql`.
+
+For full October materialization, reset first to avoid duplicate append-only Kafka/Parquet output:
+
+```bash
+./infra/scripts/reset_m3.sh
+./infra/scripts/setup_m3.sh
+python3 streaming/replay.py --full --speed 10000x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
+./infra/scripts/verify_m3.sh
+```
+
 By default, the source dataset is stored at:
 
 ```text

@@ -61,6 +61,8 @@ class ReplayConfig:
     kafka_topic: str
     kafka_brokers: str
     compose_file: Path
+    quiet: bool
+    progress_every: int
     sleep: bool
     debug: bool
 
@@ -255,6 +257,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Advance replay ticks without waiting in real time.",
     )
     parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-event replay traces and print compact progress updates.",
+    )
+    parser.add_argument(
+        "--progress-every",
+        type=positive_int,
+        default=10000,
+        help="In quiet mode, print progress after this many dispatched events. Default: 10000",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Print extra runtime information useful during local development.",
@@ -280,6 +293,8 @@ def load_config(argv: list[str] | None = None) -> ReplayConfig:
         kafka_topic=args.kafka_topic,
         kafka_brokers=args.kafka_brokers,
         compose_file=args.compose_file,
+        quiet=args.quiet,
+        progress_every=args.progress_every,
         sleep=not args.no_sleep,
         debug=args.debug,
     )
@@ -346,6 +361,9 @@ def print_config(config: ReplayConfig, downloaded: bool) -> None:
         print(f"Kafka brokers: {config.kafka_brokers}")
         print(f"Compose file: {config.compose_file}")
     print(f"Sleep between ticks: {'yes' if config.sleep else 'no'}")
+    print(f"Quiet mode: {'on' if config.quiet else 'off'}")
+    if config.quiet:
+        print(f"Progress interval: {config.progress_every:,} event(s)")
     print(f"Debug mode: {'on' if config.debug else 'off'}")
 
 
@@ -501,6 +519,33 @@ def print_trace(
     return last_event_time_sent
 
 
+def print_progress(
+    tick: int,
+    config: ReplayConfig,
+    total_dispatched: int,
+    batch_size: int,
+    pending_count: int,
+    latest_event_time: datetime | None,
+    force: bool = False,
+) -> None:
+    """Print compact replay progress for large materialization runs."""
+    if latest_event_time is None:
+        return
+    if not force and total_dispatched % config.progress_every != 0:
+        return
+
+    print(
+        "Progress "
+        f"events={total_dispatched:,} "
+        f"latest_event_time={format_timestamp(latest_event_time)} "
+        f"latest_event_date={latest_event_time.astimezone(UTC).date()} "
+        f"tick={tick:,} "
+        f"batch={batch_size:,} "
+        f"pending={pending_count:,}",
+        flush=True,
+    )
+
+
 class EventSink:
     """Output target for prepared replay events."""
 
@@ -603,6 +648,8 @@ def run_replay(config: ReplayConfig) -> None:
     cursor_increment = timedelta(seconds=config.speed * config.loop_seconds)
     tick = 1
     total_dispatched = 0
+    next_progress_at = config.progress_every
+    last_progress_total = 0
     last_event_time_sent: datetime | None = None
     pending_events: list[PreparedEvent] = []
     sink = build_sink(config)
@@ -639,13 +686,39 @@ def run_replay(config: ReplayConfig) -> None:
             for prepared_event in prepared_events:
                 sink.send(prepared_event)
 
-            last_event_time_sent = print_trace(
-                tick,
-                config,
-                prepared_events,
-                last_event_time_sent,
-            )
             total_dispatched += len(prepared_events)
+            latest_batch_event_time = max(
+                (event.event_time for event in prepared_events),
+                default=last_event_time_sent,
+            )
+
+            if config.quiet:
+                if latest_batch_event_time and (
+                    last_event_time_sent is None
+                    or latest_batch_event_time > last_event_time_sent
+                ):
+                    last_event_time_sent = latest_batch_event_time
+                if total_dispatched >= next_progress_at:
+                    print_progress(
+                        tick,
+                        config,
+                        total_dispatched,
+                        len(prepared_events),
+                        len(pending_events),
+                        last_event_time_sent,
+                        force=True,
+                    )
+                    last_progress_total = total_dispatched
+                    next_progress_at = (
+                        (total_dispatched // config.progress_every) + 1
+                    ) * config.progress_every
+            else:
+                last_event_time_sent = print_trace(
+                    tick,
+                    config,
+                    prepared_events,
+                    last_event_time_sent,
+                )
 
             if next_event is None and not pending_events:
                 break
@@ -657,6 +730,16 @@ def run_replay(config: ReplayConfig) -> None:
     finally:
         sink.close()
 
+    if config.quiet and total_dispatched != last_progress_total:
+        print_progress(
+            tick,
+            config,
+            total_dispatched,
+            0,
+            0,
+            last_event_time_sent,
+            force=True,
+        )
     print(f"Replay complete. Dispatched {total_dispatched:,} event(s).")
 
 

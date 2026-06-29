@@ -14,10 +14,11 @@ services:
         rest.address: jobmanager
         rest.bind-address: 0.0.0.0
         taskmanager.numberOfTaskSlots: 4
-        parallelism.default: 1
+        parallelism.default: 2
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
 
   taskmanager:
     image: apache/flink:1.19.1-scala_2.12-java17
@@ -30,9 +31,10 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 4
-        parallelism.default: 1
+        parallelism.default: 2
     volumes:
       - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
 
   validation-job:
     image: apache/flink:1.19.1-scala_2.12-java17
@@ -58,4 +60,32 @@ services:
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
+    restart: "no"
+
+  analytics-job:
+    image: apache/flink:1.19.1-scala_2.12-java17
+    platform: linux/amd64
+    container_name: p3-flink-analytics-job
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - redpanda
+    command:
+      - bash
+      - -lc
+      - |
+        /opt/flink/bin/sql-client.sh \
+          -l /opt/flink/usrlib \
+          -D execution.target=remote \
+          -D rest.address=jobmanager \
+          -f /opt/flink/jobs/flink_job_analytics.sql
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+    volumes:
+      - ../../streaming:/opt/flink/jobs:ro
+      - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
     restart: "no"

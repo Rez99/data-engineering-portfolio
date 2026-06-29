@@ -501,7 +501,7 @@ The project is implemented incrementally through a series of milestones. Each mi
 | --------- | ---- | ------------------- | ------ |
 | **M1** | Producer → Raw Kafka | Replay historical clickstream events into the raw `clickstream-raw` topic, including configurable replay speed, delayed/out-of-order events, and optional corrupt records. | 🟢 Complete |
 | **M2** | Validation Layer → Clean Kafka + DLQ | Consume `clickstream-raw`, validate and deserialize events, write valid records to `clickstream-clean`, and route malformed records to `clickstream-dlq`. | 🟢 Complete |
-| **M3** | Clean Kafka → Flink → Parquet | Persist the validated event stream as a partitioned Parquet dataset for downstream analytical processing. | 🔴 Not started |
+| **M3** | Clean Kafka → Flink → Parquet | Persist the validated event stream as a partitioned Parquet dataset for downstream analytical processing. | 🟢 Complete |
 | **M4** | Clean Kafka → Flink → Postgres | Compute live session-level bot detection metrics using stateful stream processing and continuously update an operational PostgreSQL database. | 🔴 Not started |
 | **M5** | Live Dashboard | Visualize live bot detection metrics and operational health through an interactive dashboard. | 🔴 Not started |
 | **M6** | Observability | Monitor the streaming pipeline using operational metrics such as throughput, consumer lag, DLQ rate, latency, checkpoint health, and backpressure. | 🔴 Not started |
@@ -550,7 +550,7 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 | --------- | -------------- | -------------- | ------ |
 | M1        | `setup_m1.sh`  | `reset_m1.sh`  | 🟢 Complete |
 | M2        | `setup_m2.sh`  | `reset_m2.sh`  | 🟢 Complete |
-| M3        | `setup_m3.sh`  | `reset_m3.sh`  | 🔴 Not started |
+| M3        | `setup_m3.sh`  | `reset_m3.sh`  | 🟢 Complete |
 | M4        | `setup_m4.sh`  | `reset_m4.sh`  | 🔴 Not started |
 | M5        | `setup_m5.sh`  | `reset_m5.sh`  | 🔴 Not started |
 | M6        | `setup_m6.sh`  | `reset_m6.sh`  | 🔴 Not started |
@@ -587,10 +587,12 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 
 | ID | Task | Acceptance Criteria | Status |
 |----|------|---------------------|--------|
-| **M3.1** | Implement analytical Flink job | - A Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are deserialized according to the clean event contract without repeating raw validation or DLQ routing.<br>- No state, windows or watermarks are used. | 🔴 Not started |
-| **M3.2** | Write partitioned Parquet dataset | - The Flink job continuously writes events to a partitioned Parquet dataset.<br>- The dataset is partitioned by `event_date`. | 🔴 Not started |
-| **M3.3** | Verify analytical dataset | - Running the replay engine for a fixed number of valid events (e.g. 100,000) produces the same number of records in the partitioned Parquet dataset.<br>- Querying the dataset confirms that the schema is preserved and the directory structure is partitioned by event day.<br>- Malformed records routed to `clickstream-dlq` do not appear in the Parquet dataset. | 🔴 Not started |
-| **M3.4** | Materialize historical analytical dataset | - The replay engine is executed over the complete October dataset at an accelerated replay rate. <br>- The resulting partitioned Parquet dataset contains the complete validated historical clickstream dataset. <br>- The completed Parquet dataset is retained as a historical analytical dataset and serves as the input artifact for Milestone 4.| 🔴 Not started |
+| **M3.1** | Implement analytical Flink job | - A Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are deserialized according to the clean event contract without repeating raw validation or DLQ routing.<br>- No state, windows or watermarks are used. | 🟢 Complete |
+| **M3.2** | Write partitioned Parquet dataset | - The Flink job continuously writes events to a partitioned Parquet dataset.<br>- The dataset is partitioned by `event_date`. | 🟢 Complete |
+| **M3.3** | Verify analytical dataset | - Running the replay engine for a fixed number of valid events (e.g. 100,000) produces the same number of records in the partitioned Parquet dataset.<br>- Querying the dataset confirms that the schema is preserved and the directory structure is partitioned by event day.<br>- Malformed records routed to `clickstream-dlq` do not appear in the Parquet dataset. | 🟢 Complete |
+| **M3.4** | Materialize historical analytical dataset | - The replay engine is executed over the complete October dataset at an accelerated replay rate. <br>- The resulting partitioned Parquet dataset contains the complete validated historical clickstream dataset. <br>- The completed Parquet dataset is retained as a historical analytical dataset and serves as the input artifact for Milestone 4.| 🟢 Complete |
+
+M3 closeout verification confirmed 31 `event_date` partitions from `2019-10-01` through `2019-10-31`, 31 `_SUCCESS` files, zero `m2-validation` lag, zero `m3-analytics` lag, and no `.inprogress` Parquet files.
 
 ## 3.8 M4: Clean Kafka → Flink → Postgres
 
@@ -680,7 +682,7 @@ project-3-streaming-bot-detection/
 ├── streaming/
 │   ├── replay.py
 │   ├── flink_job_validation.sql
-│   ├── flink_job_analytics.py
+│   ├── flink_job_analytics.sql
 │   └── flink_job_operational.py
 │
 ├── batch/
