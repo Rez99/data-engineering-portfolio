@@ -499,7 +499,7 @@ The project is implemented incrementally through a series of milestones. Each mi
 
 | Milestone | Goal | Primary Deliverable | Status |
 | --------- | ---- | ------------------- | ------ |
-| **M1** | Producer → Raw Kafka | Replay historical clickstream events into the raw `clickstream-raw` topic, including configurable replay speed, delayed/out-of-order events, and optional corrupt records. | 🟡 In progress |
+| **M1** | Producer → Raw Kafka | Replay historical clickstream events into the raw `clickstream-raw` topic, including configurable replay speed, delayed/out-of-order events, and optional corrupt records. | 🟢 Complete |
 | **M2** | Validation Layer → Clean Kafka + DLQ | Consume `clickstream-raw`, validate and deserialize events, write valid records to `clickstream-clean`, and route malformed records to `clickstream-dlq`. | 🔴 Not started |
 | **M3** | Clean Kafka → Flink → Parquet | Persist the validated event stream as a partitioned Parquet dataset for downstream analytical processing. | 🔴 Not started |
 | **M4** | Clean Kafka → Flink → Postgres | Compute live session-level bot detection metrics using stateful stream processing and continuously update an operational PostgreSQL database. | 🔴 Not started |
@@ -541,9 +541,9 @@ python streaming/replay.py [options]
 For example:
 
 ```bash
-python streaming/replay.py --rows 20 --speed 1x
+python streaming/replay.py --rows 20 --speed 1x --sink console
 
-python streaming/replay.py --full --speed 100x
+python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 ```
 
 | Milestone | Setup          | Reset          | Status |
@@ -567,7 +567,7 @@ python streaming/replay.py --full --speed 100x
 | **M1.1** | Create replay application | - A Python application `streaming/replay.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-replaypy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
 | M1.2 | Implement replay engine | - A Python implementation of the replay engine described in Section 2.1 executes successfully.<br>- Running the replay at 1× speed produces a human-readable console trace demonstrating the expected replay behaviour, including event timestamp, send timestamp, event type, producer, delayed/out-of-order events, and intentionally corrupted events when enabled. <br>- Producer workers write to a temporary console sink, allowing routing and replay behaviour to be verified independently of Kafka.<br>- The replay engine preserves the complete source schema for uncorrupted events prior to publication.| 🟢 Complete |
 | M1.3	| Deploy event broker	| - Kafka (or Redpanda) is running locally.<br>- A raw `clickstream-raw` topic is created and ready to receive events.<br>- `clickstream-clean` and `clickstream-dlq` topics are created for downstream validation output.<br>- Retention policies appropriate for raw, clean, and DLQ topics are configured.| 🟢 Complete |
-| M1.4	| Publish replay events	| - Producer workers publish replay events to the raw `clickstream-raw` topic.<br>- A test consumer (or Kafka UI/CLI) verifies that all replay events are successfully received.<br>- Delayed events are observed arriving out of event-time order, demonstrating the replay engine's delay simulation.<br>- Corrupt events are observed in the raw topic when corruption simulation is enabled. | 🔴 Not started |
+| M1.4	| Publish replay events	| - Producer workers publish replay events to the raw `clickstream-raw` topic.<br>- A test consumer (or Kafka UI/CLI) verifies that all replay events are successfully received.<br>- Delayed events are observed arriving out of event-time order, demonstrating the replay engine's delay simulation.<br>- Corrupt events are observed in the raw topic when corruption simulation is enabled. | 🟢 Complete |
 
 ## 3.6 M2: Validation Layer → Clean Kafka + DLQ
 
@@ -652,8 +652,28 @@ project-3-streaming-bot-detection/
 │
 ├── infra/
 │   ├── compose/
+│   │   ├── kafka.yml
+│   │   ├── flink.yml
+│   │   ├── postgres.yml
+│   │   ├── grafana.yml
+│   │   └── kafka-ui.yml
 │   ├── scripts/
+│   │   ├── setup_m1.sh
+│   │   ├── reset_m1.sh
+│   │   ├── setup_m2.sh
+│   │   ├── reset_m2.sh
+│   │   ├── setup_m3.sh
+│   │   ├── reset_m3.sh
+│   │   ├── setup_m4.sh
+│   │   ├── reset_m4.sh
+│   │   ├── setup_m5.sh
+│   │   ├── reset_m5.sh
+│   │   ├── setup_m6.sh
+│   │   ├── reset_m6.sh
+│   │   ├── setup_all.sh
+│   │   └── reset_all.sh
 │   └── grafana/
+│       └── dashboard.json
 │
 ├── streaming/
 │   ├── replay.py
@@ -665,10 +685,17 @@ project-3-streaming-bot-detection/
 │   ├── generate_reference_artifacts.py
 │   ├── normalization.sql
 │   └── artifacts/
+│   └── artifacts/
+│       ├── normalization.parquet
+│       └── bot_config.json
 │
 ├── sql/
+│   └── postgres_schema.sql
 │
 ├── data/
+│   ├── raw/
+│   ├── parquet/
+│   └── checkpoints/
 │
 ├── exploration/
 │

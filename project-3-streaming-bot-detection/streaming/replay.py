@@ -2,8 +2,9 @@
 
 The M1 replay engine reads the October 2019 clickstream CSV incrementally,
 emits events according to their original event timestamps, and routes prepared
-events to temporary console producers. Kafka publishing is introduced in a later
-milestone.
+events through logical producer workers. Events can be written to the console
+for local replay inspection or published to the raw Kafka-compatible
+``clickstream-raw`` topic through Redpanda's bundled ``rpk`` CLI.
 """
 
 from __future__ import annotations
@@ -11,8 +12,10 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import json
 import random
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -28,6 +31,9 @@ from urllib.request import urlopen
 DEFAULT_SOURCE_URL = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_PATH = PROJECT_DIR / "data/source/2019-Oct.csv.gz"
+DEFAULT_COMPOSE_FILE = PROJECT_DIR / "infra/compose/kafka.yml"
+DEFAULT_KAFKA_TOPIC = "clickstream-raw"
+DEFAULT_KAFKA_BROKERS = "localhost:9092"
 SUPPORTED_EVENT_TYPES = {"view", "cart", "purchase", "remove_from_cart"}
 CORRUPTION_SCENARIOS = (
     ("null user_session", "user_session", ""),
@@ -51,6 +57,10 @@ class ReplayConfig:
     mean_delay_seconds: float
     corrupt_probability: float
     random_seed: int
+    sink: str
+    kafka_topic: str
+    kafka_brokers: str
+    compose_file: Path
     sleep: bool
     debug: bool
 
@@ -218,6 +228,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Random seed for reproducible delay and corruption simulation. Default: 1",
     )
     parser.add_argument(
+        "--sink",
+        choices=("console", "kafka"),
+        default="console",
+        help="Output sink for replayed events. Default: console",
+    )
+    parser.add_argument(
+        "--kafka-topic",
+        default=DEFAULT_KAFKA_TOPIC,
+        help=f"Kafka topic used when --sink kafka. Default: {DEFAULT_KAFKA_TOPIC}",
+    )
+    parser.add_argument(
+        "--kafka-brokers",
+        default=DEFAULT_KAFKA_BROKERS,
+        help=f"Broker address used inside the Redpanda container. Default: {DEFAULT_KAFKA_BROKERS}",
+    )
+    parser.add_argument(
+        "--compose-file",
+        type=Path,
+        default=DEFAULT_COMPOSE_FILE,
+        help=f"Docker Compose file used for rpk publishing. Default: {DEFAULT_COMPOSE_FILE}",
+    )
+    parser.add_argument(
         "--no-sleep",
         action="store_true",
         help="Advance replay ticks without waiting in real time.",
@@ -244,6 +276,10 @@ def load_config(argv: list[str] | None = None) -> ReplayConfig:
         mean_delay_seconds=args.mean_delay_seconds,
         corrupt_probability=args.corrupt_probability,
         random_seed=args.random_seed,
+        sink=args.sink,
+        kafka_topic=args.kafka_topic,
+        kafka_brokers=args.kafka_brokers,
+        compose_file=args.compose_file,
         sleep=not args.no_sleep,
         debug=args.debug,
     )
@@ -304,6 +340,11 @@ def print_config(config: ReplayConfig, downloaded: bool) -> None:
     print(f"Mean delay: {config.mean_delay_seconds:g}s")
     print(f"Corrupt probability: {config.corrupt_probability:g}")
     print(f"Random seed: {config.random_seed}")
+    print(f"Sink: {config.sink}")
+    if config.sink == "kafka":
+        print(f"Kafka topic: {config.kafka_topic}")
+        print(f"Kafka brokers: {config.kafka_brokers}")
+        print(f"Compose file: {config.compose_file}")
     print(f"Sleep between ticks: {'yes' if config.sleep else 'no'}")
     print(f"Debug mode: {'on' if config.debug else 'off'}")
 
@@ -460,8 +501,96 @@ def print_trace(
     return last_event_time_sent
 
 
+class EventSink:
+    """Output target for prepared replay events."""
+
+    def start(self) -> None:
+        """Open resources needed before replay starts."""
+
+    def send(self, prepared_event: PreparedEvent) -> None:
+        """Send one prepared event."""
+
+    def close(self) -> None:
+        """Close resources after replay completes."""
+
+
+class ConsoleSink(EventSink):
+    """No-op sink used with the human-readable console trace."""
+
+    def send(self, prepared_event: PreparedEvent) -> None:
+        return
+
+
+class RpkKafkaSink(EventSink):
+    """Publish JSON records to Kafka through the local Redpanda container."""
+
+    def __init__(self, config: ReplayConfig) -> None:
+        self.config = config
+        self.process: subprocess.Popen[str] | None = None
+
+    def start(self) -> None:
+        if not self.config.compose_file.exists():
+            raise RuntimeError(f"Compose file not found: {self.config.compose_file}")
+
+        command = [
+            "docker",
+            "compose",
+            "-f",
+            str(self.config.compose_file),
+            "exec",
+            "-T",
+            "redpanda",
+            "rpk",
+            "topic",
+            "produce",
+            self.config.kafka_topic,
+            "--brokers",
+            self.config.kafka_brokers,
+            "--format",
+            "%v{json}\n",
+            "--output-format",
+            "",
+        ]
+        self.process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            text=True,
+        )
+
+    def send(self, prepared_event: PreparedEvent) -> None:
+        if self.process is None or self.process.stdin is None:
+            raise RuntimeError("Kafka sink is not started")
+        if self.process.poll() is not None:
+            raise RuntimeError("Kafka producer process exited before replay finished")
+
+        payload = json.dumps(prepared_event.event, separators=(",", ":"))
+        try:
+            self.process.stdin.write(payload + "\n")
+        except BrokenPipeError as error:
+            raise RuntimeError("Kafka producer process closed unexpectedly") from error
+
+    def close(self) -> None:
+        if self.process is None:
+            return
+
+        if self.process.stdin:
+            self.process.stdin.close()
+
+        exit_code = self.process.wait()
+        self.process = None
+        if exit_code != 0:
+            raise RuntimeError(f"Kafka producer exited with status {exit_code}")
+
+
+def build_sink(config: ReplayConfig) -> EventSink:
+    """Create the configured replay output sink."""
+    if config.sink == "kafka":
+        return RpkKafkaSink(config)
+    return ConsoleSink()
+
+
 def run_replay(config: ReplayConfig) -> None:
-    """Replay source events to temporary console producers."""
+    """Replay source events to the configured output sink."""
     source_iterator = iter(iter_source_events(config.dataset_path, config.start_row, config.rows))
     try:
         next_event = next(source_iterator)
@@ -476,44 +605,57 @@ def run_replay(config: ReplayConfig) -> None:
     total_dispatched = 0
     last_event_time_sent: datetime | None = None
     pending_events: list[PreparedEvent] = []
+    sink = build_sink(config)
 
-    print("Temporary console producers started: ViewProducer, CartProducer, PurchaseProducer")
+    print("Producer workers started: ViewProducer, CartProducer, PurchaseProducer, RemoveFromCartProducer")
+    if config.sink == "kafka":
+        print(f"Publishing to Kafka topic: {config.kafka_topic}")
+    else:
+        print("Writing producer output to the console trace only.")
     print()
 
-    while next_event is not None or pending_events:
-        while next_event is not None and next_event.event_time <= cursor:
-            pending_events.append(prepare_event(next_event, rng, config))
-            try:
-                next_event = next(source_iterator)
-            except StopIteration:
-                next_event = None
+    sink.start()
+    try:
+        while next_event is not None or pending_events:
+            while next_event is not None and next_event.event_time <= cursor:
+                pending_events.append(prepare_event(next_event, rng, config))
+                try:
+                    next_event = next(source_iterator)
+                except StopIteration:
+                    next_event = None
 
-        prepared_events = [
-            event
-            for event in pending_events
-            if event.send_time <= cursor
-        ]
-        pending_events = [
-            event
-            for event in pending_events
-            if event.send_time > cursor
-        ]
-        prepared_events.sort(key=lambda event: (event.send_time, event.row_number))
-        last_event_time_sent = print_trace(
-            tick,
-            config,
-            prepared_events,
-            last_event_time_sent,
-        )
-        total_dispatched += len(prepared_events)
+            prepared_events = [
+                event
+                for event in pending_events
+                if event.send_time <= cursor
+            ]
+            pending_events = [
+                event
+                for event in pending_events
+                if event.send_time > cursor
+            ]
+            prepared_events.sort(key=lambda event: (event.send_time, event.row_number))
 
-        if next_event is None and not pending_events:
-            break
+            for prepared_event in prepared_events:
+                sink.send(prepared_event)
 
-        tick += 1
-        cursor += cursor_increment
-        if config.sleep:
-            time.sleep(config.loop_seconds)
+            last_event_time_sent = print_trace(
+                tick,
+                config,
+                prepared_events,
+                last_event_time_sent,
+            )
+            total_dispatched += len(prepared_events)
+
+            if next_event is None and not pending_events:
+                break
+
+            tick += 1
+            cursor += cursor_increment
+            if config.sleep:
+                time.sleep(config.loop_seconds)
+    finally:
+        sink.close()
 
     print(f"Replay complete. Dispatched {total_dispatched:,} event(s).")
 

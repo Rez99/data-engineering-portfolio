@@ -1,3 +1,4 @@
-# M1.1 uses only the Python standard library.
+# M1 replay uses only the Python standard library.
+# Kafka publishing is handled through the local Redpanda rpk CLI in Docker.
 #
 # Exploration-only dependencies live in exploration/requirements.txt.

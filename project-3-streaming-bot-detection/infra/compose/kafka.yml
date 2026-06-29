@@ -35,18 +35,5 @@ services:
     volumes:
       - redpanda-data:/var/lib/redpanda/data
 
-  topic-init:
-    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
-    container_name: p3-topic-init
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    environment:
-      BROKERS: redpanda:9092
-    entrypoint: ["/bin/bash", "/scripts/create_m1_topics.sh"]
-    volumes:
-      - ../scripts/create_m1_topics.sh:/scripts/create_m1_topics.sh:ro
-    restart: "no"
-
 volumes:
   redpanda-data:
