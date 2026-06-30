@@ -1,0 +1,3 @@
+FROM qwen3.5:4b-mlx
+
+PARAMETER num_ctx 65536
