@@ -1,0 +1,211 @@
+SET 'execution.runtime-mode' = 'streaming';
+SET 'pipeline.name' = 'm4-operational-bot-scoring';
+SET 'parallelism.default' = '1';
+SET 'execution.checkpointing.interval' = '10s';
+SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
+SET 'execution.checkpointing.timeout' = '5min';
+SET 'execution.checkpointing.min-pause' = '5s';
+SET 'state.checkpoints.dir' = 'file:///opt/flink/data/flink/checkpoints/m4-operational';
+SET 'execution.checkpointing.externalized-checkpoint-retention' = 'RETAIN_ON_CANCELLATION';
+SET 'table.exec.state.ttl' = '{{SESSION_STATE_TTL_SECONDS}} s';
+
+CREATE TABLE clean_clickstream (
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING,
+  event_ts AS TO_TIMESTAMP(REPLACE(event_time, ' UTC', '')),
+  proc_time AS PROCTIME(),
+  WATERMARK FOR event_ts AS event_ts - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-clean',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'properties.group.id' = 'm4-operational',
+  'scan.startup.mode' = 'latest-offset',
+  'format' = 'json'
+);
+
+CREATE TEMPORARY VIEW normalization_lookup AS
+SELECT
+  CAST(percentile AS BIGINT) AS percentile,
+  CAST(percentile_fraction AS DOUBLE) AS percentile_fraction,
+  CAST(mean_click_interval_ms AS DOUBLE) AS mean_click_interval_ms,
+  CAST(min_click_interval_ms AS DOUBLE) AS min_click_interval_ms,
+  CAST(max_click_interval_ms AS DOUBLE) AS max_click_interval_ms,
+  CAST(sd_click_interval_ms AS DOUBLE) AS sd_click_interval_ms
+FROM (VALUES
+{{NORMALIZATION_VALUES}}
+) AS t (
+  percentile,
+  percentile_fraction,
+  mean_click_interval_ms,
+  min_click_interval_ms,
+  max_click_interval_ms,
+  sd_click_interval_ms
+);
+
+CREATE TABLE session_bot_scores (
+  user_session STRING,
+  last_event_time TIMESTAMP(3),
+  event_count BIGINT,
+  interval_count BIGINT,
+  mean_click_interval_ms DOUBLE,
+  min_click_interval_ms DOUBLE,
+  sd_click_interval_ms DOUBLE,
+  bot_score DOUBLE,
+  is_bot BOOLEAN,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (user_session) NOT ENFORCED
+) WITH (
+  'connector' = 'jdbc',
+  'url' = 'jdbc:postgresql://postgres:5432/clickstream',
+  'table-name' = 'session_bot_scores',
+  'username' = 'clickstream',
+  'password' = 'clickstream',
+  'sink.buffer-flush.interval' = '1s',
+  'sink.max-retries' = '3'
+);
+
+CREATE TABLE stream_bot_metrics (
+  window_start TIMESTAMP(3),
+  window_end TIMESTAMP(3),
+  active_sessions BIGINT,
+  bot_sessions BIGINT,
+  bot_rate DOUBLE,
+  avg_bot_score DOUBLE,
+  score_histogram STRING,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (window_start, window_end) NOT ENFORCED
+) WITH (
+  'connector' = 'jdbc',
+  'url' = 'jdbc:postgresql://postgres:5432/clickstream',
+  'table-name' = 'stream_bot_metrics',
+  'username' = 'clickstream',
+  'password' = 'clickstream',
+  'sink.buffer-flush.interval' = '1s',
+  'sink.max-retries' = '3'
+);
+
+CREATE TEMPORARY VIEW ordered_events AS
+SELECT
+  user_session,
+  event_ts,
+  proc_time,
+  LAG(event_ts) OVER (
+    PARTITION BY user_session
+    ORDER BY event_ts
+  ) AS previous_event_ts
+FROM clean_clickstream
+WHERE user_session IS NOT NULL
+  AND event_ts IS NOT NULL;
+
+CREATE TEMPORARY VIEW click_intervals AS
+SELECT
+  user_session,
+  event_ts,
+  proc_time,
+  CASE
+    WHEN previous_event_ts IS NULL THEN CAST(NULL AS DOUBLE)
+    ELSE CAST(TIMESTAMPDIFF(SECOND, previous_event_ts, event_ts) * 1000 AS DOUBLE)
+  END AS click_interval_ms
+FROM ordered_events
+WHERE previous_event_ts IS NULL
+   OR event_ts >= previous_event_ts;
+
+CREATE TEMPORARY VIEW session_running_stats AS
+SELECT
+  user_session,
+  event_ts,
+  proc_time,
+  COUNT(*) OVER session_window AS event_count,
+  COUNT(click_interval_ms) OVER session_window AS interval_count,
+  AVG(click_interval_ms) OVER session_window AS mean_click_interval_ms,
+  MIN(click_interval_ms) OVER session_window AS min_click_interval_ms,
+  STDDEV_POP(click_interval_ms) OVER session_window AS sd_click_interval_ms
+FROM click_intervals
+WINDOW session_window AS (
+  PARTITION BY user_session
+  ORDER BY event_ts
+  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+);
+
+CREATE TEMPORARY VIEW session_scores AS
+SELECT
+  s.user_session,
+  s.event_ts,
+  s.proc_time,
+  s.event_count,
+  s.interval_count,
+  s.mean_click_interval_ms,
+  s.min_click_interval_ms,
+  s.sd_click_interval_ms,
+  CASE
+    WHEN s.interval_count = 0 THEN CAST(0.0 AS DOUBLE)
+    ELSE (
+      COALESCE((100 - MAX(mean_norm.percentile)) / 100.0, 0.0)
+      + COALESCE((100 - MAX(min_norm.percentile)) / 100.0, 0.0)
+      + COALESCE((100 - MAX(sd_norm.percentile)) / 100.0, 0.0)
+    ) / 3.0
+  END AS bot_score
+FROM session_running_stats s
+LEFT JOIN normalization_lookup mean_norm
+  ON s.mean_click_interval_ms >= mean_norm.mean_click_interval_ms
+LEFT JOIN normalization_lookup min_norm
+  ON s.min_click_interval_ms >= min_norm.min_click_interval_ms
+LEFT JOIN normalization_lookup sd_norm
+  ON s.sd_click_interval_ms >= sd_norm.sd_click_interval_ms
+GROUP BY
+  s.user_session,
+  s.event_ts,
+  s.proc_time,
+  s.event_count,
+  s.interval_count,
+  s.mean_click_interval_ms,
+  s.min_click_interval_ms,
+  s.sd_click_interval_ms;
+
+EXECUTE STATEMENT SET
+BEGIN
+  INSERT INTO session_bot_scores
+  SELECT
+    user_session,
+    event_ts AS last_event_time,
+    event_count,
+    interval_count,
+    mean_click_interval_ms,
+    min_click_interval_ms,
+    sd_click_interval_ms,
+    bot_score,
+    bot_score >= {{BOT_SCORE_THRESHOLD}} AS is_bot,
+    CURRENT_TIMESTAMP AS updated_at
+  FROM session_scores;
+
+  INSERT INTO stream_bot_metrics
+  SELECT
+    TUMBLE_START(proc_time, INTERVAL '5' MINUTES) AS window_start,
+    TUMBLE_END(proc_time, INTERVAL '5' MINUTES) AS window_end,
+    COUNT(DISTINCT user_session) AS active_sessions,
+    COUNT(DISTINCT CASE WHEN bot_score >= {{BOT_SCORE_THRESHOLD}} THEN user_session ELSE NULL END) AS bot_sessions,
+    CASE
+      WHEN COUNT(DISTINCT user_session) = 0 THEN CAST(0.0 AS DOUBLE)
+      ELSE CAST(COUNT(DISTINCT CASE WHEN bot_score >= {{BOT_SCORE_THRESHOLD}} THEN user_session ELSE NULL END) AS DOUBLE)
+        / CAST(COUNT(DISTINCT user_session) AS DOUBLE)
+    END AS bot_rate,
+    AVG(bot_score) AS avg_bot_score,
+    CONCAT(
+      '0.0-0.2=', CAST(SUM(CASE WHEN bot_score < 0.2 THEN 1 ELSE 0 END) AS STRING),
+      ',0.2-0.4=', CAST(SUM(CASE WHEN bot_score >= 0.2 AND bot_score < 0.4 THEN 1 ELSE 0 END) AS STRING),
+      ',0.4-0.6=', CAST(SUM(CASE WHEN bot_score >= 0.4 AND bot_score < 0.6 THEN 1 ELSE 0 END) AS STRING),
+      ',0.6-0.8=', CAST(SUM(CASE WHEN bot_score >= 0.6 AND bot_score < 0.8 THEN 1 ELSE 0 END) AS STRING),
+      ',0.8-1.0=', CAST(SUM(CASE WHEN bot_score >= 0.8 THEN 1 ELSE 0 END) AS STRING)
+    ) AS score_histogram,
+    CURRENT_TIMESTAMP AS updated_at
+  FROM session_scores
+  GROUP BY TUMBLE(proc_time, INTERVAL '5' MINUTES);
+END;

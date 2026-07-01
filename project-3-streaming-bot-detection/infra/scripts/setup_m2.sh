@@ -46,7 +46,7 @@ create_topic_if_missing clickstream-clean 3 604800000
 create_topic_if_missing clickstream-dlq 1 1209600000
 
 docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-  "/opt/flink/bin/flink list -r | awk '/^[0-9a-f]{32} : / {print \$1}' | xargs -r -n1 /opt/flink/bin/flink cancel"
+  "/opt/flink/bin/flink list -r | awk '/ : / {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel"
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
 
 echo

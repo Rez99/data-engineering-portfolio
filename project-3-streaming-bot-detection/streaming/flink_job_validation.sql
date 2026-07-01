@@ -1,6 +1,9 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm2-clickstream-validation';
 SET 'parallelism.default' = '2';
+SET 'restart-strategy.type' = 'fixed-delay';
+SET 'restart-strategy.fixed-delay.attempts' = '10';
+SET 'restart-strategy.fixed-delay.delay' = '5s';
 
 CREATE TABLE raw_clickstream (
   payload STRING
@@ -9,7 +12,7 @@ CREATE TABLE raw_clickstream (
   'topic' = 'clickstream-raw',
   'properties.bootstrap.servers' = 'redpanda:9092',
   'properties.group.id' = 'm2-validation',
-  'scan.startup.mode' = 'earliest-offset',
+  'scan.startup.mode' = 'latest-offset',
   'format' = 'raw'
 );
 

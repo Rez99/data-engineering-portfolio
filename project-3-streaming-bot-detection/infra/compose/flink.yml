@@ -17,6 +17,7 @@ services:
         parallelism.default: 2
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
+      - ../../batch:/opt/flink/batch:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
       - ../../data:/opt/flink/data
 
@@ -33,6 +34,7 @@ services:
         taskmanager.numberOfTaskSlots: 4
         parallelism.default: 2
     volumes:
+      - ../../batch:/opt/flink/batch:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
       - ../../data:/opt/flink/data
 
@@ -59,6 +61,7 @@ services:
         rest.address: jobmanager
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
+      - ../../batch:/opt/flink/batch:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
       - ../../data:/opt/flink/data
     restart: "no"
@@ -86,6 +89,73 @@ services:
         rest.address: jobmanager
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
+      - ../../batch:/opt/flink/batch:ro
+      - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
+    restart: "no"
+
+  analytics-observer-job:
+    image: apache/flink:1.19.1-scala_2.12-java17
+    platform: linux/amd64
+    container_name: p3-flink-analytics-observer-job
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - redpanda
+    command:
+      - bash
+      - -lc
+      - |
+        /opt/flink/bin/sql-client.sh \
+          -l /opt/flink/usrlib \
+          -D execution.target=remote \
+          -D rest.address=jobmanager \
+          -f /opt/flink/jobs/flink_job_analytics_observer.sql
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+    volumes:
+      - ../../streaming:/opt/flink/jobs:ro
+      - ../../batch:/opt/flink/batch:ro
+      - ../../data/flink/lib:/opt/flink/usrlib:ro
+      - ../../data:/opt/flink/data
+    restart: "no"
+
+  operational-job:
+    image: apache/flink:1.19.1-scala_2.12-java17
+    platform: linux/amd64
+    container_name: p3-flink-operational-job
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - redpanda
+      - postgres
+    command:
+      - bash
+      - -lc
+      - |
+        BOT_CONFIG=/opt/flink/batch/artifacts/bot_config.json
+        TIMEOUT_MS="$$(grep '"session_inactivity_timeout_ms"' "$${BOT_CONFIG}" | sed -E 's/[^0-9]//g')"
+        THRESHOLD="$$(grep '"bot_score_threshold"' "$${BOT_CONFIG}" | sed -E 's/[^0-9.]+//g')"
+        TIMEOUT_SECONDS="$$((TIMEOUT_MS / 1000))"
+        sed \
+          -e "s/{{SESSION_STATE_TTL_SECONDS}}/$${TIMEOUT_SECONDS}/g" \
+          -e "s/{{BOT_SCORE_THRESHOLD}}/$${THRESHOLD}/g" \
+          /opt/flink/data/flink/generated/flink_job_operational.sql.template \
+          > /tmp/flink_job_operational.sql
+        /opt/flink/bin/sql-client.sh \
+          -l /opt/flink/usrlib \
+          -D execution.target=remote \
+          -D rest.address=jobmanager \
+          -f /tmp/flink_job_operational.sql
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+    volumes:
+      - ../../streaming:/opt/flink/jobs:ro
+      - ../../batch:/opt/flink/batch:ro
       - ../../data/flink/lib:/opt/flink/usrlib:ro
       - ../../data:/opt/flink/data
     restart: "no"

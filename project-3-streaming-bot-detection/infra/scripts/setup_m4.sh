@@ -7,10 +7,69 @@ ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
 PARQUET_DIR="${PROJECT_DIR}/data/analytics/clickstream"
 PARQUET_GLOB="/work/data/analytics/clickstream/event_date=*/part-*"
 NORMALIZATION_SQL_PATH="${PROJECT_DIR}/batch/normalization.sql"
-COMPOSE_FILES=(-f "${PROJECT_DIR}/infra/compose/duckdb.yml")
+OPERATIONAL_SQL_TEMPLATE="${PROJECT_DIR}/streaming/flink_job_operational.sql.template"
+GENERATED_FLINK_DIR="${PROJECT_DIR}/data/flink/generated"
+GENERATED_OPERATIONAL_SQL_TEMPLATE="${GENERATED_FLINK_DIR}/flink_job_operational.sql.template"
+CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
+KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
+KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
+PARQUET_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-parquet-1.19.1.jar"
+PARQUET_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-parquet/1.19.1/flink-sql-parquet-1.19.1.jar"
+HADOOP_RUNTIME_JAR="${CONNECTOR_DIR}/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar"
+HADOOP_RUNTIME_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-shaded-hadoop-2-uber/2.8.3-10.0/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar"
+JDBC_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-connector-jdbc-3.2.0-1.19.jar"
+JDBC_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.2.0-1.19/flink-connector-jdbc-3.2.0-1.19.jar"
+POSTGRES_DRIVER_JAR="${CONNECTOR_DIR}/postgresql-42.7.3.jar"
+POSTGRES_DRIVER_URL="https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar"
+DUCKDB_COMPOSE_FILES=(-f "${PROJECT_DIR}/infra/compose/duckdb.yml")
+STREAMING_COMPOSE_FILES=(
+  -f "${PROJECT_DIR}/infra/compose/kafka.yml"
+  -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
+  -f "${PROJECT_DIR}/infra/compose/flink.yml"
+  -f "${PROJECT_DIR}/infra/compose/postgres.yml"
+)
 EVENTS_VIEW_SQL="CREATE OR REPLACE TEMP VIEW events AS SELECT * FROM read_parquet('${PARQUET_GLOB}', hive_partitioning = true);"
 
 cd "${PROJECT_DIR}"
+
+download_if_missing() {
+  local url="$1"
+  local destination="$2"
+
+  if [[ ! -f "${destination}" ]]; then
+    echo "Downloading $(basename "${destination}")..."
+    curl -fL "${url}" -o "${destination}"
+  fi
+}
+
+create_topic_if_missing() {
+  local topic="$1"
+  local partitions="$2"
+  local retention_ms="$3"
+
+  if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
+    rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
+    echo "Topic already exists: ${topic}"
+    return
+  fi
+
+  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
+    rpk topic create "${topic}" \
+      --brokers localhost:9092 \
+      --partitions "${partitions}" \
+      --replicas 1 \
+      --topic-config "retention.ms=${retention_ms}" \
+      --topic-config "cleanup.policy=delete"
+}
+
+cancel_running_flink_jobs_if_available() {
+  if docker compose "${STREAMING_COMPOSE_FILES[@]}" ps -q jobmanager >/dev/null 2>&1; then
+    docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
+      "/opt/flink/bin/flink list -r | awk '/ : / {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+  fi
+}
+
+cancel_running_flink_jobs_if_available
 
 if [[ ! -d "${PARQUET_DIR}" ]]; then
   echo "M4 setup failed: M3 Parquet dataset not found at ${PARQUET_DIR}" >&2
@@ -29,22 +88,64 @@ mkdir -p "${ARTIFACT_DIR}"
 
 duckdb_scalar() {
   local sql="$1"
-  docker compose "${COMPOSE_FILES[@]}" run --rm -T duckdb \
+  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
     -csv -noheader -c "${EVENTS_VIEW_SQL} ${sql}" | tr -d '\r'
 }
 
 duckdb_csv() {
   local sql="$1"
-  docker compose "${COMPOSE_FILES[@]}" run --rm -T duckdb \
+  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
     -csv -noheader -c "${EVENTS_VIEW_SQL} ${sql}" | tr -d '\r'
 }
 
 duckdb_exec() {
   local sql="$1"
-  docker compose "${COMPOSE_FILES[@]}" run --rm -T duckdb \
+  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
     -c "${EVENTS_VIEW_SQL} ${sql}"
 }
 
+render_operational_sql_template() {
+  local values_file
+  values_file="$(mktemp)"
+
+  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
+    -csv -noheader -c "
+      SELECT
+        '('
+        || percentile || ', '
+        || percentile_fraction || ', '
+        || mean_click_interval_ms || ', '
+        || min_click_interval_ms || ', '
+        || max_click_interval_ms || ', '
+        || sd_click_interval_ms || ')'
+      FROM read_parquet('/work/batch/artifacts/normalization.parquet')
+      ORDER BY percentile;
+    " \
+    | tr -d '\r' \
+    | awk '{ gsub(/^"/, ""); gsub(/"$/, ""); gsub(/""/, "\"") } NR > 1 { print "," } { printf "  %s", $0 } END { print "" }' \
+    > "${values_file}"
+
+  mkdir -p "${GENERATED_FLINK_DIR}"
+  python3 - "${OPERATIONAL_SQL_TEMPLATE}" "${GENERATED_OPERATIONAL_SQL_TEMPLATE}" "${values_file}" <<'PY'
+import sys
+from pathlib import Path
+
+template_path = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+values_path = Path(sys.argv[3])
+
+template = template_path.read_text()
+values = values_path.read_text().rstrip()
+output_path.write_text(template.replace("{{NORMALIZATION_VALUES}}", values))
+PY
+
+  rm -f "${values_file}"
+}
+
+if [[ -f "${ARTIFACT_DIR}/normalization.parquet" && -f "${ARTIFACT_DIR}/bot_config.json" ]]; then
+  echo "M4 reference artifacts already exist; reusing batch/artifacts."
+  echo "Run ./infra/scripts/reset_m4.sh first if you need to regenerate them."
+else
 source_rows="$(duckdb_scalar "SELECT COUNT(*) FROM events;")"
 schema_csv="$(duckdb_csv "DESCRIBE SELECT * FROM events;")"
 required_schema_columns=0
@@ -143,10 +244,37 @@ cat > "${ARTIFACT_DIR}/bot_config.json" <<CONFIG
   "source_row_count": ${source_rows}
 }
 CONFIG
+fi
 
-"${SCRIPT_DIR}/verify_m4.sh"
+mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/flink/checkpoints/m4-operational"
+render_operational_sql_template
+download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
+download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
+download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
+download_if_missing "${JDBC_CONNECTOR_URL}" "${JDBC_CONNECTOR_JAR}"
+download_if_missing "${POSTGRES_DRIVER_URL}" "${POSTGRES_DRIVER_JAR}"
+
+docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --remove-orphans \
+  redpanda redpanda-console jobmanager taskmanager postgres
+
+echo "Creating M4 topics..."
+create_topic_if_missing clickstream-raw 3 604800000
+create_topic_if_missing clickstream-clean 3 604800000
+create_topic_if_missing clickstream-dlq 1 1209600000
+
+docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
+  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
+
+cancel_running_flink_jobs_if_available
+docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate validation-job operational-job
 
 echo
-echo "M4.1/M4.2 artifacts are ready."
+echo "M4 operational pipeline is starting."
 echo "DuckDB is available through Docker Compose: infra/compose/duckdb.yml"
 echo "Artifacts: batch/artifacts/normalization.parquet and batch/artifacts/bot_config.json"
+echo "PostgreSQL: localhost:5432 database=clickstream user=clickstream password=clickstream"
+echo "Flink UI: http://localhost:8081"
+echo "Redpanda Console: http://localhost:8080"
+echo
+echo "Operational job logs:"
+docker compose "${STREAMING_COMPOSE_FILES[@]}" logs --tail 80 operational-job
