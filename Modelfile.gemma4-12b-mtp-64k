@@ -1,0 +1,3 @@
+FROM pierreprudh/gemma4-12b-mtp
+
+PARAMETER num_ctx 65536
