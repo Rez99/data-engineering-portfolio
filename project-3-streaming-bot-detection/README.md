@@ -10,6 +10,24 @@ The current implementation has completed Milestone 1 and implements the Mileston
 python streaming/replay.py --help
 ```
 
+## Service URLs
+
+After running the relevant setup script, the local service UIs are available at:
+
+```text
+Redpanda Console: http://localhost:8080
+Flink Web UI:     http://localhost:8081
+Grafana:          http://localhost:3000
+```
+
+Grafana login:
+
+```text
+Username: admin
+Password: admin
+Dashboard: Streaming Bot Detection Live
+```
+
 ## Local Broker
 
 Start Docker Desktop, then run:
