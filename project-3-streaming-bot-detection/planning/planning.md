@@ -518,17 +518,20 @@ The Kafka environment includes three topics:
 
 ## 3.3 Running the milestones
 
-Each milestone provides a pair of utility scripts:
+Each milestone provides utility scripts for provisioning, resetting, and, where useful, verifying that milestone:
 
 * `setup_m*.sh` provisions the infrastructure required for that milestone.
 * `reset_m*.sh` removes any generated state for that milestone, allowing it to be rerun from a clean starting point.
+* `verify_m*.sh` reports or validates the expected outputs for that milestone when a verification script is useful.
 
-In addition, the project provides two convenience scripts:
+In addition, the project provides complete-platform scripts for operating the finished system without thinking in terms of individual milestones:
 
 * `setup_all.sh` provisions the complete streaming stack required to execute the full pipeline.
-* `reset_all.sh` removes all generated state across every milestone while preserving source datasets, configuration, and project code.
+* `demo_reset.sh` clears processed runtime state for the complete stack while keeping infrastructure containers running.
+* `reset_all.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
+* `verify_all.sh` verifies representative health across the completed platform, including the replay application, Kafka topics, validation metrics, analytical dataset state, operational artifacts, Grafana, running Flink jobs, and observability endpoints.
 
-The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code.
+The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code. Verification scripts are read-only with respect to source code and are intended to confirm the current state of the platform after setup, reset, or replay.
 
 ## 3.4 Running the pipeline
 
@@ -546,15 +549,15 @@ python streaming/replay.py --rows 20 --speed 1x --sink console
 python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 ```
 
-| Milestone | Setup          | Reset          | Status |
-| --------- | -------------- | -------------- | ------ |
-| M1        | `setup_m1.sh`  | `reset_m1.sh`  | 🟢 Complete |
-| M2        | `setup_m2.sh`  | `reset_m2.sh`  | 🟢 Complete |
-| M3        | `setup_m3.sh`  | `reset_m3.sh`  | 🟢 Complete |
-| M4        | `setup_m4.sh`  | `reset_m4.sh`  | 🟢 Complete |
-| M5        | `setup_m5.sh`  | `reset_m5.sh`  | 🟢 Complete |
-| M6        | `setup_m6.sh`  | `reset_m6.sh`  | 🟢 Complete |
-| All       | `setup_all.sh` | `reset_all.sh` | 🔴 Not started |
+| Milestone | Setup          | Reset          | Verify          | Status |
+| --------- | -------------- | -------------- | --------------- | ------ |
+| M1        | `setup_m1.sh`  | `reset_m1.sh`  | —               | 🟢 Complete |
+| M2        | `setup_m2.sh`  | `reset_m2.sh`  | `verify_m2.sh`  | 🟢 Complete |
+| M3        | `setup_m3.sh`  | `reset_m3.sh`  | `verify_m3.sh`  | 🟢 Complete |
+| M4        | `setup_m4.sh`  | `reset_m4.sh`  | `verify_m4.sh`  | 🟢 Complete |
+| M5        | `setup_m5.sh`  | `reset_m5.sh`  | `verify_m5.sh`  | 🟢 Complete |
+| M6        | `setup_m6.sh`  | `reset_m6.sh`  | `verify_m6.sh`  | 🟢 Complete |
+| All       | `setup_all.sh` | `reset_all.sh` | `verify_all.sh` | 🟢 Complete |
 
 
 
@@ -686,7 +689,9 @@ project-3-streaming-bot-detection/
 │   │   ├── reset_m6.sh
 │   │   ├── verify_m6.sh
 │   │   ├── setup_all.sh
-│   │   └── reset_all.sh
+│   │   ├── demo_reset.sh
+│   │   ├── reset_all.sh
+│   │   └── verify_all.sh
 │   └── grafana/
 │       ├── dashboards/
 │       │   └── bot-detection-live.json

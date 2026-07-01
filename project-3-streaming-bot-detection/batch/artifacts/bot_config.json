@@ -1,15 +1,15 @@
 {
   "bot_score_threshold": 0.7,
-  "generated_at_utc": "2026-07-01T01:16:14Z",
+  "generated_at_utc": "2026-07-01T18:10:45Z",
   "normalization_artifact": "batch/artifacts/normalization.parquet",
-  "session_count": 5974844,
-  "session_inactivity_timeout_ms": 5220000,
+  "session_count": 1097,
+  "session_inactivity_timeout_ms": 217280,
   "session_inactivity_timeout_source": {
     "metric": "max_click_interval_ms",
     "percentile": 99
   },
   "source_dataset": "data/analytics/clickstream",
-  "source_event_date_partitions": 31,
-  "source_parquet_files": 658,
-  "source_row_count": 42448762
+  "source_event_date_partitions": 1,
+  "source_parquet_files": 2,
+  "source_row_count": 5000
 }

@@ -257,6 +257,21 @@ download_if_missing "${POSTGRES_DRIVER_URL}" "${POSTGRES_DRIVER_JAR}"
 docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --remove-orphans \
   redpanda redpanda-console jobmanager taskmanager postgres
 
+echo "Waiting for PostgreSQL..."
+for _ in {1..30}; do
+  if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
+    pg_isready -U clickstream -d clickstream >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
+if ! docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
+  pg_isready -U clickstream -d clickstream >/dev/null 2>&1; then
+  echo "M4 setup failed: PostgreSQL did not become ready." >&2
+  exit 1
+fi
+
 echo "Creating M4 topics..."
 create_topic_if_missing clickstream-raw 3 604800000
 create_topic_if_missing clickstream-clean 3 604800000

@@ -10,6 +10,18 @@ The current implementation has completed Milestone 1 and implements the Mileston
 python streaming/replay.py --help
 ```
 
+For simple run, observe, and reset instructions, see:
+
+```text
+docs/RUNBOOK.md
+```
+
+For a fresh demo replay with processed data cleared and Docker infrastructure containers kept running, run:
+
+```bash
+./infra/scripts/demo_reset.sh
+```
+
 ## Service URLs
 
 After running the relevant setup script, the local service UIs are available at:

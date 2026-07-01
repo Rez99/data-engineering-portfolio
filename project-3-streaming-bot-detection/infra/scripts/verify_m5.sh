@@ -16,7 +16,7 @@ postgres_scalar() {
     psql -U clickstream -d clickstream -At -c "${sql}" | tr -d '\r'
 }
 
-if [[ -z "$(docker compose "${COMPOSE_FILES[@]}" ps -q grafana 2>/dev/null)" ]]; then
+if [[ -z "$(docker compose "${COMPOSE_FILES[@]}" ps --status running -q grafana 2>/dev/null)" ]]; then
   echo "M5 verification failed: Grafana container is not running." >&2
   exit 1
 fi

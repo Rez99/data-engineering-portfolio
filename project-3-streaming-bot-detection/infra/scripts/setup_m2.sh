@@ -10,6 +10,7 @@ COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/kafka.yml"
   -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
   -f "${PROJECT_DIR}/infra/compose/flink.yml"
+  -f "${PROJECT_DIR}/infra/compose/postgres.yml"
 )
 
 create_topic_if_missing() {

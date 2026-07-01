@@ -15,7 +15,7 @@ cd "${PROJECT_DIR}"
 
 container_id() {
   local service="$1"
-  docker compose "${COMPOSE_FILES[@]}" ps -q "${service}" 2>/dev/null
+  docker compose "${COMPOSE_FILES[@]}" ps --status running -q "${service}" 2>/dev/null
 }
 
 require_container() {
@@ -148,7 +148,12 @@ PY
 )"
 
 dlq_description="$(rpk topic describe clickstream-dlq 2>/dev/null || true)"
-dlq_sample="$(rpk topic consume clickstream-dlq --offset start --num 1 --format '%v\n' 2>/dev/null || true)"
+dlq_high_watermark="$(rpk topic describe clickstream-dlq -p 2>/dev/null | awk '$1 == "0" { print $6 }')"
+if [[ "${dlq_high_watermark:-0}" -gt 0 ]]; then
+  dlq_sample="$(rpk topic consume clickstream-dlq --offset start --num 1 --format '%v\n' 2>/dev/null || true)"
+else
+  dlq_sample=""
+fi
 if [[ -z "${dlq_sample}" ]]; then
   dlq_sample="No DLQ records available in the current retained topic range."
 fi
