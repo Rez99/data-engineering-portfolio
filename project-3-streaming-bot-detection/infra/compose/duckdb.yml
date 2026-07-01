@@ -1,0 +1,9 @@
+name: project-3-streaming-bot-detection-m4
+
+services:
+  duckdb:
+    image: duckdb/duckdb:latest
+    working_dir: /work
+    volumes:
+      - ../..:/work
+    entrypoint: ["duckdb"]
