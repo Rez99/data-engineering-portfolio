@@ -1,4 +1,19 @@
 # 1. Project Brief
+
+## Table of Contents
+
+- [1. Project Brief](#1-project-brief)
+  - [1.1 Context](#11-context)
+  - [1.2 Vision](#12-vision)
+  - [1.3 Constraints](#13-constraints)
+- [2. Project Proposal](#2-project-proposal)
+  - [2.1 Directory structure](#21-directory-structure)
+  - [2.2 Data pipeline](#22-data-pipeline)
+  - [2.3 Serving Layer](#23-serving-layer)
+    - [2.3.1 Portfolio view (all projects)](#231-portfolio-view-all-projects)
+    - [2.3.2 Project snapshot](#232-project-snapshot)
+    - [2.3.3 Project Kanban](#233-project-kanban)
+
 ## 1.1 Context
 
 I work for an engineering company where I manage multiple concurrent client engagements. Some projects last a few weeks while others span many months.
@@ -130,7 +145,7 @@ Example of structured data (`.json`) extracted by the LLM (Gold Layer):
 
 Legend: 🟢 On Track   🟡 At Risk   🔴 Blocked
 ```
-###2.3.2 Project snapshot (Acme Corp)
+### 2.3.2 Project snapshot
 ```text
 
 
