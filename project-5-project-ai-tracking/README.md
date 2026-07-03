@@ -84,7 +84,7 @@ client-engagement/
 ├── client_e/
 ```
 ## 2.2 Data pipeline
-Each project progresses through a three-stage pipeline, where information is progressively enriched and distilled into more useful forms.
+Each project progresses through a five-stage pipeline, where information is progressively enriched and distilled into more useful forms.
 * ***📥 Source*** – Continuously ingest artifacts from external systems (email, Teams, Slack, SharePoint, CRMs, etc.) using APIs and automation scripts running on a scheduled cadence.
 * ***🥉 Bronze Layer*** – Preserve the original source artifacts (emails, PDFs, transcripts, documents, etc.).
 * ***🥈 Silver Layer*** – Normalize every artifact into a common representation *(Markdown)*, providing a consistent, AI-friendly format regardless of the original file type.
