@@ -117,7 +117,7 @@ Gold Layer (structured data)
 --------------------------------
 *.json
 
-               ⬇
+               ⬇ (🤖 AI)
 
 Serving Layer (visual)
 --------------------------------
