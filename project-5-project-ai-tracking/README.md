@@ -6,6 +6,7 @@
   - [1.1 Context](#11-context)
   - [1.2 Vision](#12-vision)
   - [1.3 Constraints](#13-constraints)
+  - [1.4 Success Criteria](#14-success-criteria)
 - [2. Project Proposal](#2-project-proposal)
   - [2.1 Directory structure](#21-directory-structure)
   - [2.2 Data pipeline](#22-data-pipeline)
@@ -49,6 +50,19 @@ The goal is not simply reporting—it is creating an AI-assisted engagement oper
 - I have approximately one week to build a proof of concept.
 - I will present the idea at a company retreat in three weeks.
 - The objective is to demonstrate value, not perform a full migration of company data.
+
+## 1.4 Success Criteria
+
+The proof of concept will be considered successful if it demonstrates that AI can continuously synthesize fragmented client communications into a single, explainable view of every engagement.
+
+| Today                                           | Goal                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| 🔍 Search across emails, PDFs and meeting notes | 📁 One canonical workspace per client engagement                                          |
+| 🧠 Rely on memory to understand project status  | 🤖 AI continuously maintains project state                               |
+| ⏱️ 30–60 minutes to review active engagements   | ⚡ <5 minutes to review the portfolio                                     |
+| ❓ "Where are we on Acme?"                       | ✅ Current stage, health, risks, actions and timeline available instantly |
+
+
 
 # 2. Project Proposal
 ## 2.1 Directory structure
