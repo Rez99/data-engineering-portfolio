@@ -78,7 +78,7 @@ require_topic() {
 }
 
 check_m1() {
-  python3 -m py_compile streaming/replay.py
+  python3 -m py_compile streaming/replay_data.py
   [[ -n "$(running_container redpanda)" ]] || { echo "redpanda is not running"; return 1; }
   [[ -n "$(running_container redpanda-console)" ]] || { echo "redpanda-console is not running"; return 1; }
   require_topic clickstream-raw

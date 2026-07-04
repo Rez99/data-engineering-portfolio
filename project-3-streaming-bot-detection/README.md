@@ -7,7 +7,7 @@ The current implementation has completed Milestone 1 and implements the Mileston
 ## Current Entry Point
 
 ```bash
-python streaming/replay.py --help
+python streaming/replay_data.py --help
 ```
 
 For simple run, observe, and reset instructions, see:
@@ -16,10 +16,10 @@ For simple run, observe, and reset instructions, see:
 docs/RUNBOOK.md
 ```
 
-For a fresh demo replay with processed data cleared and Docker infrastructure containers kept running, run:
+For a fresh data replay with processed data cleared and Docker infrastructure containers kept running, run:
 
 ```bash
-./infra/scripts/demo_reset.sh
+./infra/scripts/reset_data.sh
 ```
 
 ## Service URLs
@@ -71,7 +71,7 @@ http://localhost:8080
 Replay a small batch into Kafka:
 
 ```bash
-python streaming/replay.py --rows 20 --speed 100x --sink kafka --no-sleep
+python streaming/replay_data.py --rows 20 --speed 100x --sink kafka --no-sleep
 ```
 
 Inspect records from the raw topic:
@@ -137,7 +137,7 @@ For full October materialization, reset first to avoid duplicate append-only Kaf
 ```bash
 ./infra/scripts/reset_m3.sh
 ./infra/scripts/setup_m3.sh
-python3 streaming/replay.py --full --speed 10000x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
+python3 streaming/replay_data.py --full --speed 10000x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
 ./infra/scripts/verify_m3.sh
 ```
 

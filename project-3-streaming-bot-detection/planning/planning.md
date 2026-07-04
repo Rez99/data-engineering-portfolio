@@ -6,7 +6,7 @@
   - [1.4 High-level (Kappa) architecture](#14-high-level-kappa-architecture)
 - [2. Implementation sketch](#2-implementation-sketch)
   - [2.1 Producers -> Raw Kafka](#21-producers---raw-kafka)
-    - [2.1.1 Pseudo-logic for `replay.py`](#211-pseudo-logic-for-replaypy)
+    - [2.1.1 Pseudo-logic for `replay_data.py`](#211-pseudo-logic-for-replay_datapy)
     - [2.1.2 Mermaid diagram illustrating the replay logic](#212-mermaid-diagram-illustrating-the-replay-logic)
     - [2.1.3 Example console output to verify success](#213-example-console-output-to-verify-success)
   - [2.2 Kafka → Flink → Kafka validation layer](#22-kafka--flink--kafka-validation-layer)
@@ -147,7 +147,7 @@ Kappa treats both batch and real-time workloads as stream processing problems. I
 # 2. Implementation sketch
 ## 2.1 Producers -> Raw Kafka
 
-### 2.1.1 Pseudo-logic for `replay.py`
+### 2.1.1 Pseudo-logic for `replay_data.py`
 The goal of this component is to simulate a live clickstream by replaying historical events from the October 2019 dataset into the raw `clickstream-raw` Kafka topic. Rather than publishing the entire CSV as quickly as possible, the replay engine should emit events according to their original event timestamps, scaled by a configurable replay speed (e.g. 100×). The implementation should also support configurable network delay simulation, causing a subset of events to arrive out of order. Events are routed to dedicated producer workers based on their event type (view, cart, or purchase) before being published to the raw topic. The following pseudo-logic describes the expected behaviour; the implementation does not need to match it line-for-line, but should preserve the same observable behaviour.
 ```text
 1. Declare configuration
@@ -526,9 +526,9 @@ Each milestone provides utility scripts for provisioning, resetting, and, where 
 
 In addition, the project provides complete-platform scripts for operating the finished system without thinking in terms of individual milestones:
 
-* `setup_all.sh` provisions the complete streaming stack required to execute the full pipeline.
-* `demo_reset.sh` clears processed runtime state for the complete stack while keeping infrastructure containers running.
-* `reset_all.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
+* `setup_all_infra.sh` provisions the complete streaming stack required to execute the full pipeline.
+* `reset_data.sh` clears processed runtime state for the complete stack while keeping infrastructure containers running.
+* `reset_all_infra.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
 * `verify_all.sh` verifies representative health across the completed platform, including the replay application, Kafka topics, validation metrics, analytical dataset state, operational artifacts, Grafana, running Flink jobs, and observability endpoints.
 
 The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code. Verification scripts are read-only with respect to source code and are intended to confirm the current state of the platform after setup, reset, or replay.
@@ -538,15 +538,15 @@ The setup and reset scripts are idempotent and do **not** execute the data pipel
 Once the desired infrastructure and Flink jobs are running, the streaming pipeline is executed by starting the replay engine:
 
 ```bash
-python streaming/replay.py [options]
+python streaming/replay_data.py [options]
 ```
 
 For example:
 
 ```bash
-python streaming/replay.py --rows 20 --speed 1x --sink console
+python streaming/replay_data.py --rows 20 --speed 1x --sink console
 
-python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
+python streaming/replay_data.py --rows 1000 --speed 100x --sink kafka --no-sleep
 ```
 
 | Milestone | Setup          | Reset          | Verify          | Status |
@@ -557,7 +557,7 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 | M4        | `setup_m4.sh`  | `reset_m4.sh`  | `verify_m4.sh`  | 🟢 Complete |
 | M5        | `setup_m5.sh`  | `reset_m5.sh`  | `verify_m5.sh`  | 🟢 Complete |
 | M6        | `setup_m6.sh`  | `reset_m6.sh`  | `verify_m6.sh`  | 🟢 Complete |
-| All       | `setup_all.sh` | `reset_all.sh` | `verify_all.sh` | 🟢 Complete |
+| All       | `setup_all_infra.sh` | `reset_all_infra.sh` | `verify_all.sh` | 🟢 Complete |
 
 
 
@@ -567,7 +567,7 @@ python streaming/replay.py --rows 1000 --speed 100x --sink kafka --no-sleep
 
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
-| **M1.1** | Create replay application | - A Python application `streaming/replay.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-replaypy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
+| **M1.1** | Create replay application | - A Python application `streaming/replay_data.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-replay_datapy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
 | M1.2 | Implement replay engine | - A Python implementation of the replay engine described in Section 2.1 executes successfully.<br>- Running the replay at 1× speed produces a human-readable console trace demonstrating the expected replay behaviour, including event timestamp, send timestamp, event type, producer, delayed/out-of-order events, and intentionally corrupted events when enabled. <br>- Producer workers write to a temporary console sink, allowing routing and replay behaviour to be verified independently of Kafka.<br>- The replay engine preserves the complete source schema for uncorrupted events prior to publication.| 🟢 Complete |
 | M1.3	| Deploy event broker	| - Kafka (or Redpanda) is running locally.<br>- A raw `clickstream-raw` topic is created and ready to receive events.<br>- `clickstream-clean` and `clickstream-dlq` topics are created for downstream validation output.<br>- Retention policies appropriate for raw, clean, and DLQ topics are configured.| 🟢 Complete |
 | M1.4	| Publish replay events	| - Producer workers publish replay events to the raw `clickstream-raw` topic.<br>- A test consumer (or Redpanda Console/CLI) verifies that all replay events are successfully received.<br>- Delayed events are observed arriving out of event-time order, demonstrating the replay engine's delay simulation.<br>- Corrupt events are observed in the raw topic when corruption simulation is enabled.<br>- Redpanda Console is available at http://localhost:8080 and displays the broker and topics. | 🟢 Complete |
@@ -605,15 +605,15 @@ M3 closeout verification confirmed 31 `event_date` partitions from `2019-10-01` 
 |----|------|---------------------|--------|
 | **M4.1** | Deploy DuckDB | - DuckDB is installed and accessible from the local development environment.<br>- The partitioned Parquet dataset produced in Milestone 3 can be queried successfully from DuckDB.<br>- A simple validation query confirms the expected row count and schema. | 🟢 Complete |
 | **M4.2** | Generate normalization artifact | - DuckDB queries the historical Parquet dataset produced in Milestone 3 using the SQL described in [Section 2.4.3](#243-historical-normalization-lookup-table).<br>- Session-level click interval statistics (`mean`, `min`, `max`, `sd`) are computed from the complete validated October dataset.<br>- Historical percentile distributions (P0–P100) are generated for each statistic and persisted as `normalization.parquet`.<br>- Bot scoring configuration values, including a session inactivity timeout equal to the 99th percentile of the historical maximum click interval distribution, are persisted as `bot_config.json`.<br>- Both artifacts can be loaded into memory by the Flink bot scoring job at startup.| 🟢 Complete |
-| **M4.3** | Implement event-time session aggregation | - A stateful Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are partitioned by `user_session` using SQL `PARTITION BY` semantics.<br>- Event timestamps are assigned from the `event_time` field.<br>- A bounded out-of-orderness watermark strategy is configured to correctly process delayed events generated by the replay engine.<br>- Each incoming event updates session-level running state, allowing the running click interval statistics (`mean`, `min`, `sd`) to be derived incrementally.<br>- Running `python streaming/replay.py --rows 50 --speed 1x --delay-probability 0.2 --sink kafka --no-sleep` demonstrates that delayed valid events are accepted by the live operational pipeline.<br>- Session state TTL is parameterized from `bot_config.json`. | 🟢 Complete |
+| **M4.3** | Implement event-time session aggregation | - A stateful Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are partitioned by `user_session` using SQL `PARTITION BY` semantics.<br>- Event timestamps are assigned from the `event_time` field.<br>- A bounded out-of-orderness watermark strategy is configured to correctly process delayed events generated by the replay engine.<br>- Each incoming event updates session-level running state, allowing the running click interval statistics (`mean`, `min`, `sd`) to be derived incrementally.<br>- Running `python streaming/replay_data.py --rows 50 --speed 1x --delay-probability 0.2 --sink kafka --no-sleep` demonstrates that delayed valid events are accepted by the live operational pipeline.<br>- Session state TTL is parameterized from `bot_config.json`. | 🟢 Complete |
 | **M4.4** | Compute **session-level** bot score | - `normalization.parquet` and `bot_config.json` are loaded during Flink job startup.<br>- The running session statistics (`mean`, `min`, `sd`) are mapped to their corresponding historical percentiles.<br>- A bot score is computed and updated for each incoming event. | 🟢 Complete |
 | **M4.5** | Compute **stream-level** bot metrics | - The stream of session-level bot scores is aggregated into the 5-minute tumbling windows described in [Section 2.4.2](#242-stream-level-bot-scoring).<br>- The bot rate and score histogram are computed continuously for each window.<br>- Running the replay engine demonstrates that stream-level metrics are updated as session bot scores change. | 🟢 Complete |
 | **M4.6** | Configure Flink checkpointing | - Periodic Flink checkpoints are enabled for the operational Flink job.<br>- A durable checkpoint storage location is configured.<br>- The Kafka source participates in Flink checkpointing so consumer offsets are captured with completed checkpoints.<br>- The PostgreSQL sink is configured to tolerate replayed updates through idempotent UPSERTs. | 🟢 Complete |
 | **M4.7** | Deploy PostgreSQL                | - A local PostgreSQL instance is running successfully.<br>- Tables for storing session-level bot scores and stream-level metrics are created. | 🟢 Complete |
 | **M4.8** | Persist operational metrics      | - Session-level bot scores are continuously written to PostgreSQL using an UPSERT operation (one row per active session).<br>- Stream-level metrics are continuously written to PostgreSQL.<br>- Running the replay engine demonstrates that both session-level bot scores and stream-level metrics are updated correctly in PostgreSQL. | 🟢 Complete |
-| **M4.9** | Demonstrate fault tolerance | - Restarting the Flink TaskManager during replay restores the operational job from the latest completed checkpoint.<br>- The Kafka source resumes from checkpointed offsets rather than reprocessing the entire `clickstream-clean` topic from the beginning.<br>- Session-level bot scores continue from restored state instead of being recomputed from an empty session state.<br>- PostgreSQL UPSERTs keep repeated writes idempotent if any records are replayed after recovery.<br>- The demo clearly states the achieved delivery semantics for the Kafka-to-Flink-to-PostgreSQL path. | 🟢 Complete |
+| **M4.9** | Demonstrate fault tolerance | - Restarting the Flink TaskManager during replay restores the operational job from the latest completed checkpoint.<br>- The Kafka source resumes from checkpointed offsets rather than reprocessing the entire `clickstream-clean` topic from the beginning.<br>- Session-level bot scores continue from restored state instead of being recomputed from an empty session state.<br>- PostgreSQL UPSERTs keep repeated writes idempotent if any records are replayed after recovery.<br>- The data clearly states the achieved delivery semantics for the Kafka-to-Flink-to-PostgreSQL path. | 🟢 Complete |
 
-M4 closeout verification confirmed Docker Compose can run DuckDB, DuckDB can query the M3 partitioned Parquet dataset, the source dataset contains 42,448,762 rows across 31 `event_date` partitions and 658 Parquet part files, `normalization.parquet` contains 101 percentile rows, and `bot_config.json` contains a 99th-percentile session inactivity timeout of 5,220,000 ms. The operational Flink job runs continuously against `clickstream-clean`, writes session bot scores and stream bot metrics to PostgreSQL, completed 30 checkpoints during verification, and restored from checkpoint 5 times during the TaskManager restart fault-tolerance demo.
+M4 closeout verification confirmed Docker Compose can run DuckDB, DuckDB can query the M3 partitioned Parquet dataset, the source dataset contains 42,448,762 rows across 31 `event_date` partitions and 658 Parquet part files, `normalization.parquet` contains 101 percentile rows, and `bot_config.json` contains a 99th-percentile session inactivity timeout of 5,220,000 ms. The operational Flink job runs continuously against `clickstream-clean`, writes session bot scores and stream bot metrics to PostgreSQL, completed 30 checkpoints during verification, and restored from checkpoint 5 times during the TaskManager restart fault-tolerance data.
 
 ## 3.9 M5: Live Dashboard
 
@@ -622,7 +622,7 @@ M4 closeout verification confirmed Docker Compose can run DuckDB, DuckDB can que
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
 | **M5.1** | Deploy Grafana                  | - Grafana is running locally.<br>- Grafana is connected to the PostgreSQL database produced in Milestone 4. | 🟢 Complete |
-| **M5.2** | Visualize session-level metrics | - A Grafana dashboard displays the current active sessions and their corresponding bot scores.<br>- The dashboard refreshes automatically as new events are processed.<br>- Running `python streaming/replay.py --start-row 100000 --rows 500 --speed 100x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 250` demonstrates live updates to session-level bot scores. | 🟢 Complete |
+| **M5.2** | Visualize session-level metrics | - A Grafana dashboard displays the current active sessions and their corresponding bot scores.<br>- The dashboard refreshes automatically as new events are processed.<br>- Running `python streaming/replay_data.py --start-row 100000 --rows 500 --speed 100x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 250` demonstrates live updates to session-level bot scores. | 🟢 Complete |
 | **M5.3** | Visualize stream-level metrics  | - A Grafana dashboard displays the stream-level metrics described in [Section 2.4.2](#242-stream-level-bot-scoring), including bot rate and score histogram.<br>- Stream-level panels update from the closed 5-minute processing-time windows produced by the operational Flink job. | 🟢 Complete |
 
 M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhost:3000`, the provisioned `Clickstream Postgres` datasource connects to the `clickstream` database, and the `Streaming Bot Detection Live` dashboard is available. Grafana can be accessed locally with username `admin` and password `admin`. After a 500-event replay batch, `session_bot_scores` increased to 135 rows with a latest update timestamp of `2026-07-01 12:25:55.764`; `stream_bot_metrics` remained available with 3 closed-window metric rows.
@@ -634,7 +634,7 @@ M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhos
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
 | **M6.1** | Deploy monitoring tools | - Redpanda Console and the Flink Web UI are running locally.<br>- Both tools are accessible from the development environment. | 🟢 Complete |
-| **M6.2** | Monitor Kafka           | - Redpanda Console displays the `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` topics and their active consumer groups.<br>- Consumer lag and message throughput are visible while the replay engine and Flink jobs are running.<br>- Running `python streaming/replay.py --rows 100000 --speed 100x` demonstrates the live Kafka metrics updating across raw and clean topics. | 🟢 Complete |
+| **M6.2** | Monitor Kafka           | - Redpanda Console displays the `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` topics and their active consumer groups.<br>- Consumer lag and message throughput are visible while the replay engine and Flink jobs are running.<br>- Running `python streaming/replay_data.py --rows 100000 --speed 100x` demonstrates the live Kafka metrics updating across raw and clean topics. | 🟢 Complete |
 | **M6.3** | Monitor validation quality | - The validation job exposes valid record count, invalid record count, and DLQ rate through Kafka topic movement, consumer lag, and Flink operator metrics.<br>- Increasing the replay engine corruption probability causes a visible increase in `clickstream-dlq` activity.<br>- DLQ records can be inspected to identify the original payload and validation failure reason. | 🟢 Complete |
 | **M6.4** | Monitor Flink           | - The Flink Web UI displays the running validation, analytical observer, and operational streaming jobs and their operator graphs.<br>- Operator throughput, checkpoint status, and backpressure metrics are visible while the replay engine is running.<br>- Increasing the replay speed demonstrates changes in throughput and, where applicable, backpressure within the Flink jobs. | 🟢 Complete |
 
@@ -681,16 +681,16 @@ project-3-streaming-bot-detection/
 │   │   ├── setup_m4.sh
 │   │   ├── reset_m4.sh
 │   │   ├── verify_m4.sh
-│   │   ├── demo_m4_fault_tolerance.sh
+│   │   ├── m4_fault_tolerance.sh
 │   │   ├── setup_m5.sh
 │   │   ├── reset_m5.sh
 │   │   ├── verify_m5.sh
 │   │   ├── setup_m6.sh
 │   │   ├── reset_m6.sh
 │   │   ├── verify_m6.sh
-│   │   ├── setup_all.sh
-│   │   ├── demo_reset.sh
-│   │   ├── reset_all.sh
+│   │   ├── setup_all_infra.sh
+│   │   ├── reset_data.sh
+│   │   ├── reset_all_infra.sh
 │   │   └── verify_all.sh
 │   └── grafana/
 │       ├── dashboards/
@@ -702,7 +702,7 @@ project-3-streaming-bot-detection/
 │               └── postgres.yml
 │
 ├── streaming/
-│   ├── replay.py
+│   ├── replay_data.py
 │   ├── flink_job_validation.sql
 │   ├── flink_job_analytics.sql
 │   ├── flink_job_analytics_observer.sql

@@ -65,7 +65,7 @@ before_summary="$(flink_summary)"
 IFS='|' read -r before_job_id before_completed before_restored <<<"${before_summary}"
 
 if [[ "${before_job_id}" == "missing" ]]; then
-  echo "M4 fault-tolerance demo failed: operational Flink job is not running." >&2
+  echo "M4 fault-tolerance data failed: operational Flink job is not running." >&2
   exit 1
 fi
 
@@ -82,7 +82,7 @@ after_summary="$(flink_summary)"
 IFS='|' read -r after_job_id after_completed after_restored <<<"${after_summary}"
 
 cat <<REPORT
-M4 fault-tolerance demo
+M4 fault-tolerance data
 before_job_id=${before_job_id}
 after_job_id=${after_job_id}
 before_completed_checkpoints=${before_completed}

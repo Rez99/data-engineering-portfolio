@@ -751,7 +751,7 @@ def main(argv: list[str] | None = None) -> int:
         print_config(config, downloaded)
         run_replay(config)
     except (argparse.ArgumentError, RuntimeError, OSError) as error:
-        print(f"replay.py failed: {error}", file=sys.stderr)
+        print(f"replay_data.py failed: {error}", file=sys.stderr)
         return 1
     return 0
 
