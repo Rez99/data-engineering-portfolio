@@ -6,7 +6,6 @@ Use the project as a three-state system.
 
 - [State Diagram](#state-diagram)
 - [Quick Start](#quick-start)
-- [States](#states)
 - [Useful URLs](#useful-urls)
 
 ## State Diagram
@@ -45,72 +44,7 @@ Next valid action: ...
 Why: ...
 ```
 
-## States
-
-### Start
-
-The complete live platform is not available yet.
-
-Valid next action:
-
-```bash
-./infra/scripts/setup_all_infra.sh
-```
-
-Then check again:
-
-```bash
-./infra/scripts/state.sh
-```
-
-### Platform Ready
-
-The live platform is up, but no replayed data is present.
-
-Valid next action:
-
-```bash
-python3 streaming/replay_data.py \
-  --start-row 100000 \
-  --rows 500 \
-  --speed 100x \
-  --sink kafka \
-  --no-sleep \
-  --corrupt-probability 0.02 \
-  --delay-probability 0.02 \
-  --quiet \
-  --progress-every 250
-```
-
-Then check again:
-
-```bash
-./infra/scripts/state.sh
-```
-
-You can also reset the whole project back to Start:
-
-```bash
-./infra/scripts/reset_all_infra.sh
-```
-
-### Data Present
-
-The platform is up and Kafka or PostgreSQL contains replay records.
-
-Valid next action:
-
-```bash
-./infra/scripts/reset_data.sh
-```
-
-This clears processed data and keeps the infrastructure running, so the next state should be `Platform Ready`.
-
-Then check again:
-
-```bash
-./infra/scripts/state.sh
-```
+Follow the `Next valid action` returned by the script. After that action finishes, run `./infra/scripts/state.sh` again.
 
 ## Useful URLs
 
