@@ -14,6 +14,11 @@ COMPOSE_FILES=(
 cd "${PROJECT_DIR}"
 
 OPERATIONAL_JAR="${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar"
+CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
+PARQUET_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-parquet-1.19.1.jar"
+PARQUET_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-parquet/1.19.1/flink-sql-parquet-1.19.1.jar"
+HADOOP_RUNTIME_JAR="${CONNECTOR_DIR}/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar"
+HADOOP_RUNTIME_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-shaded-hadoop-2-uber/2.8.3-10.0/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar"
 
 flink_running_jobs() {
   docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
@@ -34,6 +39,27 @@ wait_for_flink_job() {
   exit 1
 }
 
+cancel_flink_job_by_name() {
+  local job_name="$1"
+
+  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
+    "/opt/flink/bin/flink list -r | awk -v job='${job_name}' '\$0 ~ job {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+}
+
+download_if_missing() {
+  local url="$1"
+  local destination="$2"
+
+  if [[ ! -f "${destination}" ]]; then
+    echo "Downloading $(basename "${destination}")..."
+    curl -fL "${url}" -o "${destination}"
+  fi
+}
+
+mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/analytics"
+download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
+download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
+
 docker compose "${COMPOSE_FILES[@]}" up -d \
   redpanda redpanda-console jobmanager taskmanager postgres grafana
 
@@ -44,6 +70,8 @@ if ! docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flin
   | grep -q 'm2-clickstream-validation'; then
   docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
 fi
+
+cancel_flink_job_by_name m6-analytics-observer
 
 if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
   && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
@@ -60,19 +88,18 @@ if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
 fi
 
 if docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flink list -r 2>/dev/null \
-  | grep -q 'm3-clean-clickstream-parquet'; then
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-    "/opt/flink/bin/flink list -r | awk '/m3-clean-clickstream-parquet/ {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+  | grep -q 'm6-analytics-observer'; then
+  cancel_flink_job_by_name m6-analytics-observer
 fi
 
 if ! docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flink list -r 2>/dev/null \
-  | grep -q 'm6-analytics-observer'; then
-  docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-observer-job
+  | grep -q 'm3-clean-clickstream-parquet'; then
+  docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-job
 fi
 
 echo "Waiting for live Flink jobs to be running..."
 wait_for_flink_job m2-clickstream-validation
-wait_for_flink_job m6-analytics-observer
+wait_for_flink_job m3-clean-clickstream-parquet
 if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
   && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
   && [[ -f "${OPERATIONAL_JAR}" ]]; then

@@ -77,7 +77,7 @@ for topic in clickstream-raw clickstream-clean clickstream-dlq; do
   fi
 done
 
-group_report="$(rpk group describe m2-validation m3-analytics m4-operational m6-analytics-observer 2>/dev/null || true)"
+group_report="$(rpk group describe m2-validation m3-analytics m4-operational 2>/dev/null || true)"
 
 job_report="$(flink_json /jobs/overview)"
 checkpoint_report="$(python3 - <<'PY'
@@ -101,14 +101,14 @@ jobs = json.load(urlopen("http://localhost:8081/jobs/overview", timeout=10))["jo
 running_names = {job["name"] for job in jobs if job["state"] == "RUNNING"}
 required = {
     "m2-clickstream-validation": "validation",
-    "m6-analytics-observer": "analytical observer",
+    "m3-clean-clickstream-parquet": "Parquet writer",
     "m4-operational-bot-scoring": "operational",
 }
 missing = [label for name, label in required.items() if name not in running_names]
 if missing:
     print("missing|" + ", ".join(missing))
 else:
-    print("ok|validation, analytical observer, operational")
+    print("ok|validation, Parquet writer, operational")
 PY
 )"
 

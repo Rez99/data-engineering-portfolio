@@ -82,8 +82,8 @@ platform_ready() {
     return 1
   fi
 
-  if ! grep -q 'm6-analytics-observer' <<<"${jobs}"; then
-    add_detail "Flink job is not running: m6-analytics-observer"
+  if ! grep -q 'm3-clean-clickstream-parquet' <<<"${jobs}"; then
+    add_detail "Flink job is not running: m3-clean-clickstream-parquet"
     return 1
   fi
 
@@ -108,7 +108,7 @@ platform_ready() {
     return 1
   fi
 
-  add_detail "Core services, Kafka topics, Flink listeners, and PostgreSQL tables are available."
+  add_detail "Core services, Kafka topics, validation, Parquet writer, operational scoring, and PostgreSQL tables are available."
 }
 
 data_present() {
