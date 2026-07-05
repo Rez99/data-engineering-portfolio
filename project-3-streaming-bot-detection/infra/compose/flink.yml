@@ -13,7 +13,7 @@ services:
         jobmanager.rpc.address: jobmanager
         rest.address: jobmanager
         rest.bind-address: 0.0.0.0
-        taskmanager.numberOfTaskSlots: 4
+        taskmanager.numberOfTaskSlots: 8
         parallelism.default: 2
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
@@ -31,7 +31,7 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 4
+        taskmanager.numberOfTaskSlots: 8
         parallelism.default: 2
     volumes:
       - ../../batch:/opt/flink/batch:ro
@@ -135,20 +135,21 @@ services:
       - bash
       - -lc
       - |
-        BOT_CONFIG=/opt/flink/batch/artifacts/bot_config.json
-        TIMEOUT_MS="$$(grep '"session_inactivity_timeout_ms"' "$${BOT_CONFIG}" | sed -E 's/[^0-9]//g')"
-        THRESHOLD="$$(grep '"bot_score_threshold"' "$${BOT_CONFIG}" | sed -E 's/[^0-9.]+//g')"
-        TIMEOUT_SECONDS="$$((TIMEOUT_MS / 1000))"
-        sed \
-          -e "s/{{SESSION_STATE_TTL_SECONDS}}/$${TIMEOUT_SECONDS}/g" \
-          -e "s/{{BOT_SCORE_THRESHOLD}}/$${THRESHOLD}/g" \
-          /opt/flink/data/flink/generated/flink_job_operational.sql.template \
-          > /tmp/flink_job_operational.sql
-        /opt/flink/bin/sql-client.sh \
-          -l /opt/flink/usrlib \
-          -D execution.target=remote \
+        JAR=/opt/flink/data/flink/generated/operational-bot-scoring.jar
+        if [[ ! -f "$${JAR}" ]]; then
+          echo "Missing $${JAR}. Run ./infra/scripts/build_operational_job.sh first." >&2
+          exit 1
+        fi
+        /opt/flink/bin/flink run -d \
+          -c com.portfolio.botdetection.OperationalBotScoringJob \
           -D rest.address=jobmanager \
-          -f /tmp/flink_job_operational.sql
+          -C file:///opt/flink/usrlib/flink-sql-connector-kafka-3.2.0-1.19.jar \
+          -C file:///opt/flink/usrlib/flink-connector-jdbc-3.2.0-1.19.jar \
+          -C file:///opt/flink/usrlib/postgresql-42.7.3.jar \
+          "$${JAR}" \
+          --bot-config /opt/flink/batch/artifacts/bot_config.json \
+          --normalization-values /opt/flink/data/flink/generated/normalization_values.csv \
+          --parallelism 2
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager

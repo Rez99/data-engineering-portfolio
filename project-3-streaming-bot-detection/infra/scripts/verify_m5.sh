@@ -69,6 +69,7 @@ if [[ "${grafana_state}" != "ok" ]]; then
 fi
 
 session_rows="$(postgres_scalar "SELECT COUNT(*) FROM session_bot_scores;")"
+active_session_rows="$(postgres_scalar "SELECT COUNT(*) FROM session_bot_scores WHERE session_status = 'active';")"
 metric_rows="$(postgres_scalar "SELECT COUNT(*) FROM stream_bot_metrics;")"
 latest_bot_rate="$(postgres_scalar "SELECT COALESCE((SELECT bot_rate FROM stream_bot_metrics ORDER BY window_end DESC LIMIT 1), 0.0);")"
 
@@ -80,6 +81,7 @@ datasource_name=${grafana_datasource}
 datasource_database=${grafana_database}
 dashboard_title=${grafana_dashboard}
 postgres_session_rows=${session_rows}
+postgres_active_session_rows=${active_session_rows}
 postgres_metric_rows=${metric_rows}
 latest_bot_rate=${latest_bot_rate}
 REPORT

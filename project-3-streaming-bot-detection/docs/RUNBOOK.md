@@ -40,7 +40,8 @@ The script prints:
 
 ```text
 State: Start | Platform Ready | Data Present
-Next valid action: ...
+Next valid action:
+  python3 streaming/replay_data.py --start-row 100000 --rows 1000000 --speed 100x --sink kafka --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 100000
 Why: ...
 ```
 

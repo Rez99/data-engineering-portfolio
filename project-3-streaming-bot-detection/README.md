@@ -71,7 +71,7 @@ http://localhost:8080
 Replay a small batch into Kafka:
 
 ```bash
-python streaming/replay_data.py --rows 20 --speed 100x --sink kafka --no-sleep
+python streaming/replay_data.py --rows 20 --speed 100x --sink kafka
 ```
 
 Inspect records from the raw topic:
@@ -137,7 +137,7 @@ For full October materialization, reset first to avoid duplicate append-only Kaf
 ```bash
 ./infra/scripts/reset_m3.sh
 ./infra/scripts/setup_m3.sh
-python3 streaming/replay_data.py --full --speed 10000x --sink kafka --no-sleep --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
+python3 streaming/replay_data.py --full --speed 10000x --sink kafka --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
 ./infra/scripts/verify_m3.sh
 ```
 
@@ -175,6 +175,7 @@ Analytical Flink     Operational Flink
 ```
 
 See `planning/planning.md` for the full architecture and milestone plan.
+See `docs/ARCHITECTURE_COMPARISON.md` for the operational scoring SQL-to-DataStream architecture comparison.
 
 ## Exploration Archive
 

@@ -1,0 +1,10 @@
+com/portfolio/botdetection/OperationalBotScoringJob$JobConfig.class
+com/portfolio/botdetection/OperationalBotScoringJob$BotConfig.class
+com/portfolio/botdetection/OperationalBotScoringJob$BotRateWindowFunction.class
+com/portfolio/botdetection/OperationalBotScoringJob$ClickEvent.class
+com/portfolio/botdetection/OperationalBotScoringJob$StreamMetric.class
+com/portfolio/botdetection/OperationalBotScoringJob.class
+com/portfolio/botdetection/OperationalBotScoringJob$SessionScoringFunction.class
+com/portfolio/botdetection/OperationalBotScoringJob$NormalizationRow.class
+com/portfolio/botdetection/OperationalBotScoringJob$SessionState.class
+com/portfolio/botdetection/OperationalBotScoringJob$SessionUpdate.class

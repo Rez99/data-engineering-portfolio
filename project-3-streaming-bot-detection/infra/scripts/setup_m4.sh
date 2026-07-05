@@ -7,9 +7,8 @@ ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
 PARQUET_DIR="${PROJECT_DIR}/data/analytics/clickstream"
 PARQUET_GLOB="/work/data/analytics/clickstream/event_date=*/part-*"
 NORMALIZATION_SQL_PATH="${PROJECT_DIR}/batch/normalization.sql"
-OPERATIONAL_SQL_TEMPLATE="${PROJECT_DIR}/streaming/flink_job_operational.sql.template"
 GENERATED_FLINK_DIR="${PROJECT_DIR}/data/flink/generated"
-GENERATED_OPERATIONAL_SQL_TEMPLATE="${GENERATED_FLINK_DIR}/flink_job_operational.sql.template"
+NORMALIZATION_VALUES_CSV="${GENERATED_FLINK_DIR}/normalization_values.csv"
 CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
 KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
 KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
@@ -104,42 +103,24 @@ duckdb_exec() {
     -c "${EVENTS_VIEW_SQL} ${sql}"
 }
 
-render_operational_sql_template() {
-  local values_file
-  values_file="$(mktemp)"
-
-  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
-    -csv -noheader -c "
-      SELECT
-        '('
-        || percentile || ', '
-        || percentile_fraction || ', '
-        || mean_click_interval_ms || ', '
-        || min_click_interval_ms || ', '
-        || max_click_interval_ms || ', '
-        || sd_click_interval_ms || ')'
-      FROM read_parquet('/work/batch/artifacts/normalization.parquet')
-      ORDER BY percentile;
-    " \
-    | tr -d '\r' \
-    | awk '{ gsub(/^"/, ""); gsub(/"$/, ""); gsub(/""/, "\"") } NR > 1 { print "," } { printf "  %s", $0 } END { print "" }' \
-    > "${values_file}"
-
+write_normalization_values_csv() {
   mkdir -p "${GENERATED_FLINK_DIR}"
-  python3 - "${OPERATIONAL_SQL_TEMPLATE}" "${GENERATED_OPERATIONAL_SQL_TEMPLATE}" "${values_file}" <<'PY'
-import sys
-from pathlib import Path
-
-template_path = Path(sys.argv[1])
-output_path = Path(sys.argv[2])
-values_path = Path(sys.argv[3])
-
-template = template_path.read_text()
-values = values_path.read_text().rstrip()
-output_path.write_text(template.replace("{{NORMALIZATION_VALUES}}", values))
-PY
-
-  rm -f "${values_file}"
+  docker compose "${DUCKDB_COMPOSE_FILES[@]}" run --rm -T duckdb \
+    -c "
+      COPY (
+      SELECT
+        percentile,
+        percentile_fraction,
+        mean_click_interval_ms,
+        min_click_interval_ms,
+        max_click_interval_ms,
+        sd_click_interval_ms
+      FROM read_parquet('/work/batch/artifacts/normalization.parquet')
+      ORDER BY percentile
+      )
+      TO '/work/data/flink/generated/normalization_values.csv'
+      (HEADER, DELIMITER ',');
+    "
 }
 
 if [[ -f "${ARTIFACT_DIR}/normalization.parquet" && -f "${ARTIFACT_DIR}/bot_config.json" ]]; then
@@ -247,12 +228,13 @@ CONFIG
 fi
 
 mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/flink/checkpoints/m4-operational"
-render_operational_sql_template
+write_normalization_values_csv
 download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
 download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
 download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
 download_if_missing "${JDBC_CONNECTOR_URL}" "${JDBC_CONNECTOR_JAR}"
 download_if_missing "${POSTGRES_DRIVER_URL}" "${POSTGRES_DRIVER_JAR}"
+"${SCRIPT_DIR}/build_operational_job.sh"
 
 docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --remove-orphans \
   redpanda redpanda-console jobmanager taskmanager postgres

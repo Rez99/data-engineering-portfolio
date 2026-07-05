@@ -33,6 +33,8 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -161,11 +163,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS active_sessions FROM session_bot_scores;",
+          "rawSql": "SELECT COUNT(*) AS active_sessions FROM session_bot_scores WHERE session_status = 'active';",
           "refId": "A"
         }
       ],
-      "title": "Tracked Sessions",
+      "title": "Active Sessions",
       "type": "stat"
     },
     {
@@ -281,6 +283,8 @@
             }
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -413,7 +417,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT user_session, event_count, interval_count, ROUND(bot_score::numeric, 3) AS bot_score, is_bot, last_event_time, updated_at FROM session_bot_scores ORDER BY bot_score DESC, updated_at DESC LIMIT 25;",
+          "rawSql": "SELECT user_session, session_status, event_count, interval_count, ROUND(bot_score::numeric, 3) AS bot_score, is_bot, last_event_time, closed_at, updated_at FROM session_bot_scores ORDER BY bot_score DESC, updated_at DESC LIMIT 25;",
           "refId": "A"
         }
       ],
@@ -519,11 +523,11 @@
     "list": []
   },
   "time": {
-    "from": "now-30m",
-    "to": "now"
+    "from": "2019-10-01T00:00:00Z",
+    "to": "2019-11-01T00:00:00Z"
   },
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "utc",
   "title": "Streaming Bot Detection Live",
   "uid": "streaming-bot-detection-live",
   "version": 1,

@@ -12,6 +12,7 @@ COMPOSE_FILES=(
 )
 PARQUET_DIR="${PROJECT_DIR}/data/analytics/clickstream"
 CHECKPOINT_DIR="${PROJECT_DIR}/data/flink/checkpoints"
+OPERATIONAL_JAR="${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar"
 
 cd "${PROJECT_DIR}"
 
@@ -111,11 +112,12 @@ mkdir -p "${CHECKPOINT_DIR}"
 echo "Resubmitting live platform Flink job listeners..."
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
 
-if [[ -f "${PROJECT_DIR}/data/flink/generated/flink_job_operational.sql.template" ]] \
-  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]]; then
+if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+  && [[ -f "${OPERATIONAL_JAR}" ]]; then
   docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate operational-job
 else
-  echo "Skipping operational-job restart because M4 generated artifacts are missing."
+  echo "Skipping operational-job restart because M4 generated artifacts or operational jar are missing."
 fi
 
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-observer-job
@@ -123,8 +125,9 @@ docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-observer-j
 echo "Waiting for live Flink jobs to be running..."
 wait_for_flink_job m2-clickstream-validation
 wait_for_flink_job m6-analytics-observer
-if [[ -f "${PROJECT_DIR}/data/flink/generated/flink_job_operational.sql.template" ]] \
-  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]]; then
+if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+  && [[ -f "${OPERATIONAL_JAR}" ]]; then
   wait_for_flink_job m4-operational-bot-scoring
 fi
 

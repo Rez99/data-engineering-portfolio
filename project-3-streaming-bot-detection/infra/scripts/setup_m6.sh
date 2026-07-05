@@ -13,6 +13,8 @@ COMPOSE_FILES=(
 
 cd "${PROJECT_DIR}"
 
+OPERATIONAL_JAR="${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar"
+
 docker compose "${COMPOSE_FILES[@]}" up -d \
   redpanda redpanda-console jobmanager taskmanager postgres grafana
 
@@ -24,7 +26,15 @@ if ! docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flin
   docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
 fi
 
-if [[ -f "${PROJECT_DIR}/data/flink/generated/flink_job_operational.sql.template" ]] \
+if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+  && [[ ! -f "${OPERATIONAL_JAR}" ]]; then
+  "${SCRIPT_DIR}/build_operational_job.sh"
+fi
+
+if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+  && [[ -f "${OPERATIONAL_JAR}" ]] \
   && ! docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flink list -r 2>/dev/null \
     | grep -q 'm4-operational-bot-scoring'; then
   docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate operational-job

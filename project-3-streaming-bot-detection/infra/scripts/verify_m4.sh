@@ -25,6 +25,12 @@ if [[ ! -f "${ARTIFACT_DIR}/bot_config.json" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" ]]; then
+  echo "M4 verification failed: missing ${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" >&2
+  echo "Run ./infra/scripts/build_operational_job.sh first." >&2
+  exit 1
+fi
+
 cd "${PROJECT_DIR}"
 
 duckdb_scalar() {

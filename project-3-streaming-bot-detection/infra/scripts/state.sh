@@ -88,7 +88,15 @@ platform_ready() {
   fi
 
   if [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
-    && [[ -f "${PROJECT_DIR}/data/flink/generated/flink_job_operational.sql.template" ]] \
+    && [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+    && [[ ! -f "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" ]]; then
+    add_detail "M4 artifacts exist, but data/flink/generated/operational-bot-scoring.jar is missing."
+    return 1
+  fi
+
+  if [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+    && [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
+    && [[ -f "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" ]] \
     && ! grep -q 'm4-operational-bot-scoring' <<<"${jobs}"; then
     add_detail "M4 artifacts exist, but m4-operational-bot-scoring is not running."
     return 1
@@ -156,7 +164,7 @@ REPORT
 State: Platform Ready
 
 Next valid action:
-  python3 streaming/replay_data.py --start-row 100000 --rows 500 --speed 100x --sink kafka --no-sleep --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 250
+  python3 streaming/replay_data.py --start-row 100000 --rows 1000000 --speed 100x --sink kafka --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 100000
 
 Other valid action:
   ./infra/scripts/reset_all_infra.sh

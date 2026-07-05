@@ -63,7 +63,6 @@ class ReplayConfig:
     compose_file: Path
     quiet: bool
     progress_every: int
-    sleep: bool
     debug: bool
 
 
@@ -252,11 +251,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Docker Compose file used for rpk publishing. Default: {DEFAULT_COMPOSE_FILE}",
     )
     parser.add_argument(
-        "--no-sleep",
-        action="store_true",
-        help="Advance replay ticks without waiting in real time.",
-    )
-    parser.add_argument(
         "--quiet",
         action="store_true",
         help="Suppress per-event replay traces and print compact progress updates.",
@@ -295,7 +289,6 @@ def load_config(argv: list[str] | None = None) -> ReplayConfig:
         compose_file=args.compose_file,
         quiet=args.quiet,
         progress_every=args.progress_every,
-        sleep=not args.no_sleep,
         debug=args.debug,
     )
 
@@ -360,7 +353,6 @@ def print_config(config: ReplayConfig, downloaded: bool) -> None:
         print(f"Kafka topic: {config.kafka_topic}")
         print(f"Kafka brokers: {config.kafka_brokers}")
         print(f"Compose file: {config.compose_file}")
-    print(f"Sleep between ticks: {'yes' if config.sleep else 'no'}")
     print(f"Quiet mode: {'on' if config.quiet else 'off'}")
     if config.quiet:
         print(f"Progress interval: {config.progress_every:,} event(s)")
@@ -725,8 +717,7 @@ def run_replay(config: ReplayConfig) -> None:
 
             tick += 1
             cursor += cursor_increment
-            if config.sleep:
-                time.sleep(config.loop_seconds)
+            time.sleep(config.loop_seconds)
     finally:
         sink.close()
 

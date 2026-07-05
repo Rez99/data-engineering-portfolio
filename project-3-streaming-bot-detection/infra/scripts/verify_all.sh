@@ -124,7 +124,8 @@ check_m4() {
   local artifacts=(
     "${ARTIFACT_DIR}/normalization.parquet"
     "${ARTIFACT_DIR}/bot_config.json"
-    "${PROJECT_DIR}/data/flink/generated/flink_job_operational.sql.template"
+    "${PROJECT_DIR}/data/flink/generated/normalization_values.csv"
+    "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar"
   )
 
   local artifact
