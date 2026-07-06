@@ -94,47 +94,18 @@ flowchart LR
 
         REPLAY[Replay Engine]
 
-        RAW[("<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/kafka.svg'
-            style='height:40px;'/>
-        <div><b>Raw Clickstream Topic</b></div>
-    </div>")]
+        RAW[("Kafka Topic<br>Raw Clickstream")]
 
-        VALIDATE["<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/flink-1.svg'
-            style='height:40px;'/>
-        <div><b>Schema Validation</b></div>
-    </div>"]
+        VALIDATE["Flink Job<br>Schema Validation"]
 
-        CLEAN[("<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/kafka.svg'
-            style='height:40px;'/>
-        <div><b>Validated Clickstream Topic</b></div>
-    </div>")]
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
 
-        DLQ[("<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/kafka.svg'
-            style='height:40px;'/>
-        <div><b>Dead Letter Queue</b></div>
-    </div>")]
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
 
-        ANALYTICS_JOB["<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/flink-1.svg'
-            style='height:40px;'/>
-        <div><b>Write Parquet</b></div>
-    </div>"]
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
 
-        OPERATIONAL_JOB["<div style='text-align:center'>
-        <img
-            src='https://www.apache.org/logos/originals/flink-1.svg'
-            style='height:40px;'/>
-        <div><b>Real-Time Bot Scoring</b></div>
-    </div>"]
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
+
 
         REPLAY --> RAW
         RAW --> VALIDATE
