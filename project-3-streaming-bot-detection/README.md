@@ -7,8 +7,9 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 | Section | Contents |
 | ------- | -------- |
 | **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
-| **[2. Follow One Deployment](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
+| **[2. Follow One Session](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
 
+# 1. What This Project Does
 ## 1.1 Problem Statement
 
 The portfolio follows a three-stage progression:
@@ -69,6 +70,7 @@ The platform continuously produces the following artifacts:
 | Operational Dashboard | Visualize live bot metrics and streaming health |
 
 ## 1.3 End-to-End Workflow
+At a high level, the streaming platform supports two complementary workloads: historical analytics and real-time operational analytics.
 ```mermaid
 flowchart LR
 
@@ -84,7 +86,7 @@ flowchart LR
     PLATFORM --> ANALYTICAL
     PLATFORM --> OPERATIONAL
 ```
----
+The following workflow expands this view to show how replayed clickstream events flow through Kafka topics and Flink jobs to produce each output.
 ```mermaid
 flowchart LR
 
@@ -106,7 +108,6 @@ flowchart LR
 
         OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
 
-
         REPLAY --> RAW
         RAW --> VALIDATE
         VALIDATE --> CLEAN
@@ -117,45 +118,32 @@ flowchart LR
 
     end
 
-    ANALYTICAL["Analytical Pipeline<br/><br/><i>(Historical Analysis)</i>"]
+    subgraph ANALYTICAL["Analytical Pipeline"]
 
-    OPERATIONAL["Operational Pipeline<br/><br/><i>(Real-Time Analysis)</i>"]
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
 
     DATA --> REPLAY
 
-    ANALYTICS_JOB --> ANALYTICAL
-    OPERATIONAL_JOB --> OPERATIONAL
-```
-```mermaid
-flowchart TD
+    ANALYTICS_JOB --> PARQUET
 
-    E[Clickstream Events]
-    RAW[Kafka: clickstream-raw]
-    V[Validation Flink Job]
-    CLEAN[Kafka: clickstream-clean]
-    DLQ[Kafka: clickstream-dlq]
-
-    subgraph ANALYTICAL["Analytical Pipeline"]
-        AF[Analytical Flink Job]
-        PQ[Parquet]
-        IB[(Iceberg*)]
-        AF --> PQ
-        PQ -.-> IB
-    end
-
-    subgraph OPERATIONAL["Operational Pipeline"]
-        OF[Operational Flink Job]
-        PG[Postgres]
-        DB[Live Dashboard]
-        OF --> PG
-        PG --> DB
-    end
-
-    E --> RAW
-    RAW --> V
-    V --> CLEAN
-    V --> DLQ
-    CLEAN --> AF
-    CLEAN --> OF
+    OPERATIONAL_JOB --> POSTGRES
 ```
 `*` Iceberg integration demonstrated in Projects 1 & 2.
+
+# 2. Follow One Session
