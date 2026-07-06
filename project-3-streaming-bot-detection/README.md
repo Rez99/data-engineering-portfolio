@@ -11,16 +11,13 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 
 ## 1.1 Problem Statement
 
-The first two projects focused on historical analytics:
+The portfolio follows a three-stage progression:
 
-1. ***Project 1*** demonstrated how 42 million e-commerce clickstream events could be transformed into machine-learning-ready features using a modern local lakehouse.
-2. ***Project 2*** migrated the same architecture to the cloud using Infrastructure as Code while preserving openness, portability, and reproducibility.
+1. **Project 1 — Build:** A modern local lakehouse capable of processing 42 million e-commerce clickstream events on commodity hardware using open-source technologies.
+2. **Project 2 — Migrate:** The same architecture to the cloud while preserving openness, portability, and reproducibility.
+3. **Project 3 — Extend:** The same clickstream dataset into a real-time streaming platform, evolving from historical analytics to operational analytics.
 
-This project asks a different question:
-
-> **How can the same clickstream be processed as a real-time streaming pipeline to detect bots while user sessions are still active, rather than after the damage has already been done?**
-
-Unlike historical analytics, real-time bot detection must identify suspicious behavior as events arrive. Detecting bots after a session has ended may explain what happened, but it cannot prevent fraudulent traffic from skewing analytics, consuming resources, or interacting with the application in real time.
+Unlike historical analytics, operational analytics enables organizations to act while events are still occurring rather than after they have already been collected and analyzed. Real-time bot detection serves as the demonstration application throughout this project. The value of real-time bot detection lies not in identifying bots itself, but in enabling immediate action across multiple business domains:
 
 ```mermaid
 mindmap
@@ -50,3 +47,144 @@ The project explores three questions:
 1. How should historical batch analytics be adapted to stateful stream processing?
 2. How can streaming systems be designed for reliability through replay, checkpointing, and fault tolerance?
 3. How can analytical and operational workloads be supported from a single streaming pipeline?
+
+## 1.2 Inputs and Outputs
+
+### Inputs
+
+The platform replays the October 2019 e-commerce clickstream dataset as a real-time event stream.
+
+| Input | Purpose |
+| ------ | ------- |
+| October 2019 Clickstream Dataset | Simulate a production event stream for real-time processing |
+
+### Outputs
+
+The platform continuously produces the following artifacts:
+
+| Output | Purpose |
+| ------ | ------- |
+| Clean Event Stream | Validated events for downstream consumers |
+| Analytical Dataset | Persist historical event data for offline analytics |
+| Operational Dashboard | Visualize live bot metrics and streaming health |
+
+## 1.3 End-to-End Workflow
+```mermaid
+flowchart LR
+
+    DATA([Clickstream Data])
+
+    PLATFORM[Streaming Data Platform]
+
+    ANALYTICAL["Analytical Pipeline<br/><br/><i>(Historical Analysis)</i>"]
+
+    OPERATIONAL["Operational Pipeline<br/><br/><i>(Real-Time Analysis)</i>"]
+
+    DATA --> PLATFORM
+    PLATFORM --> ANALYTICAL
+    PLATFORM --> OPERATIONAL
+```
+---
+```mermaid
+flowchart LR
+
+    DATA([Clickstream Data])
+
+    subgraph STREAMING["Streaming Data Platform"]
+
+        REPLAY[Replay Engine]
+
+        RAW[("<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/kafka.svg'
+            style='height:40px;'/>
+        <div><b>Raw Clickstream Topic</b></div>
+    </div>")]
+
+        VALIDATE["<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/flink-1.svg'
+            style='height:40px;'/>
+        <div><b>Schema Validation</b></div>
+    </div>"]
+
+        CLEAN[("<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/kafka.svg'
+            style='height:40px;'/>
+        <div><b>Validated Clickstream Topic</b></div>
+    </div>")]
+
+        DLQ[("<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/kafka.svg'
+            style='height:40px;'/>
+        <div><b>Dead Letter Queue</b></div>
+    </div>")]
+
+        ANALYTICS_JOB["<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/flink-1.svg'
+            style='height:40px;'/>
+        <div><b>Write Parquet</b></div>
+    </div>"]
+
+        OPERATIONAL_JOB["<div style='text-align:center'>
+        <img
+            src='https://www.apache.org/logos/originals/flink-1.svg'
+            style='height:40px;'/>
+        <div><b>Real-Time Bot Scoring</b></div>
+    </div>"]
+
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    ANALYTICAL["Analytical Pipeline<br/><br/><i>(Historical Analysis)</i>"]
+
+    OPERATIONAL["Operational Pipeline<br/><br/><i>(Real-Time Analysis)</i>"]
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> ANALYTICAL
+    OPERATIONAL_JOB --> OPERATIONAL
+```
+```mermaid
+flowchart TD
+
+    E[Clickstream Events]
+    RAW[Kafka: clickstream-raw]
+    V[Validation Flink Job]
+    CLEAN[Kafka: clickstream-clean]
+    DLQ[Kafka: clickstream-dlq]
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+        AF[Analytical Flink Job]
+        PQ[Parquet]
+        IB[(Iceberg*)]
+        AF --> PQ
+        PQ -.-> IB
+    end
+
+    subgraph OPERATIONAL["Operational Pipeline"]
+        OF[Operational Flink Job]
+        PG[Postgres]
+        DB[Live Dashboard]
+        OF --> PG
+        PG --> DB
+    end
+
+    E --> RAW
+    RAW --> V
+    V --> CLEAN
+    V --> DLQ
+    CLEAN --> AF
+    CLEAN --> OF
+```
+`*` Iceberg integration demonstrated in Projects 1 & 2.
