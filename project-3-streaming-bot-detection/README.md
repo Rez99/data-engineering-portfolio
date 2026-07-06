@@ -1,212 +1,52 @@
-# Project 3: Streaming Bot Detection
+# Project 3: Streaming Lakehouse
 
-This project builds a real-time clickstream pipeline for bot detection. It replays the October 2019 e-commerce clickstream dataset into Kafka, validates raw events into a clean stream, persists analytical history to Parquet, and computes live session-level bot metrics for PostgreSQL and dashboarding.
+An end-to-end streaming data platform that transforms e-commerce clickstream events into real-time bot detection metrics, continuously updated analytical datasets, and live operational dashboards using open-source streaming technologies.
 
-The current implementation has completed Milestone 1 and implements the Milestone 2 validation layer: the replay application publishes JSON clickstream records to the raw `clickstream-raw` topic, and a Flink SQL validation job routes valid records to `clickstream-clean` and malformed records to `clickstream-dlq`.
+---
 
-## Current Entry Point
+| Section | Contents |
+| ------- | -------- |
+| **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
+| **[2. Follow One Deployment](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
 
-```bash
-python streaming/replay_data.py --help
+## 1.1 Problem Statement
+
+The first two projects focused on historical analytics:
+
+1. ***Project 1*** demonstrated how 42 million e-commerce clickstream events could be transformed into machine-learning-ready features using a modern local lakehouse.
+2. ***Project 2*** migrated the same architecture to the cloud using Infrastructure as Code while preserving openness, portability, and reproducibility.
+
+This project asks a different question:
+
+> **How can the same clickstream be processed as a real-time streaming pipeline to detect bots while user sessions are still active, rather than after the damage has already been done?**
+
+Unlike historical analytics, real-time bot detection must identify suspicious behavior as events arrive. Detecting bots after a session has ended may explain what happened, but it cannot prevent fraudulent traffic from skewing analytics, consuming resources, or interacting with the application in real time.
+
+```mermaid
+mindmap
+  root((Real-Time<br/>Bot Detection))
+
+    Advertising Fraud
+      Prevent bots from clicking paid ads and inflating advertising costs.
+
+    Analytics Quality
+      Prevent bot traffic from distorting conversion rates, funnel metrics, A/B tests, and business KPIs.
+
+    Website Performance
+      Identify abusive traffic before it consumes server resources or triggers autoscaling.
+
+    Rate Limiting & Security
+      Throttle or block suspicious sessions before they scrape content or overwhelm APIs.
+
+    Fraud Prevention
+      Flag suspicious purchase or account creation behavior while the session is still active.
+
+    Personalization
+      Avoid feeding bot behavior into recommendation systems or customer profiles.
 ```
 
-For simple run, observe, and reset instructions, see:
+The project explores three questions:
 
-```text
-docs/RUNBOOK.md
-```
-
-For a fresh data replay with processed data cleared and Docker infrastructure containers kept running, run:
-
-```bash
-./infra/scripts/reset_data.sh
-```
-
-## Service URLs
-
-After running the relevant setup script, the local service UIs are available at:
-
-```text
-Redpanda Console: http://localhost:8080
-Flink Web UI:     http://localhost:8081
-Grafana:          http://localhost:3000
-```
-
-Grafana login:
-
-```text
-Username: admin
-Password: admin
-Dashboard: Streaming Bot Detection Live
-```
-
-## Local Broker
-
-Start Docker Desktop, then run:
-
-```bash
-./infra/scripts/setup_m1.sh
-```
-
-This starts a local Redpanda broker and creates:
-
-```text
-clickstream-raw
-clickstream-clean
-clickstream-dlq
-```
-
-The local Kafka bootstrap server is:
-
-```text
-localhost:19092
-```
-
-Redpanda Console is available at:
-
-```text
-http://localhost:8080
-```
-
-Replay a small batch into Kafka:
-
-```bash
-python streaming/replay_data.py --rows 20 --speed 100x --sink kafka
-```
-
-Inspect records from the raw topic:
-
-```bash
-docker compose -f infra/compose/kafka.yml exec -T redpanda \
-  rpk topic consume clickstream-raw --brokers localhost:9092 --offset start --num 20
-```
-
-To reset the M1 broker state:
-
-```bash
-./infra/scripts/reset_m1.sh
-```
-
-## Validation Layer
-
-Start the M2 stack:
-
-```bash
-./infra/scripts/setup_m2.sh
-```
-
-This starts Redpanda, Redpanda Console, Flink JobManager/TaskManager, and the validation job.
-
-```text
-Flink UI: http://localhost:8081
-Redpanda Console: http://localhost:8080
-```
-
-The validation job is defined in `streaming/flink_job_validation.sql`.
-
-Report validation counts and DLQ rate:
-
-```bash
-./infra/scripts/verify_m2.sh
-```
-
-## Analytical Parquet Dataset
-
-Start the M3 stack:
-
-```bash
-./infra/scripts/setup_m3.sh
-```
-
-This starts the validation layer plus the analytical Flink job that consumes `clickstream-clean` and writes partitioned Parquet output to:
-
-```text
-data/analytics/clickstream
-```
-
-Verify the partitioned dataset:
-
-```bash
-./infra/scripts/verify_m3.sh
-```
-
-The analytical job is defined in `streaming/flink_job_analytics.sql`.
-
-For full October materialization, reset first to avoid duplicate append-only Kafka/Parquet output:
-
-```bash
-./infra/scripts/reset_m3.sh
-./infra/scripts/setup_m3.sh
-python3 streaming/replay_data.py --full --speed 10000x --sink kafka --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 100000
-./infra/scripts/verify_m3.sh
-```
-
-By default, the source dataset is stored at:
-
-```text
-data/source/2019-Oct.csv.gz
-```
-
-Generated runtime data under `data/` is ignored by Git.
-
-## Active Architecture
-
-```text
-Replay Engine
-      |
-      v
-Kafka: clickstream-raw
-      |
-      v
-Validation Flink Job
-      |------------------|
-      v                  v
-Kafka: clickstream-clean Kafka: clickstream-dlq
-      |
-      |------------------|
-      v                  v
-Analytical Flink     Operational Flink
-      |                  |
-      v                  v
-   Parquet           PostgreSQL
-                         |
-                         v
-                  Live Dashboard
-```
-
-See `planning/planning.md` for the full architecture and milestone plan.
-See `docs/ARCHITECTURE_COMPARISON.md` for the operational scoring SQL-to-DataStream architecture comparison.
-
-## Exploration Archive
-
-Earlier source-discovery experiments for Telegram, World Monitor, YouTube, and batch-vs-streaming research are preserved under `exploration/`. They are retained as research artifacts, but they are not part of the active clickstream bot-detection implementation.
-
-
-# do not delete
-```bash
-rezwanhoppe-islam@Rezwans-MacBook-Pro project-3-streaming-bot-detection % docker compose -f infra/compose/kafka.yml \
-  exec -T redpanda \
-  rpk topic consume clickstream-raw \
-  --brokers localhost:9092 \
-  -o start \
-  -n 5 \
-  -f '{"partition":%p,"offset":%o,"event":%v}\n' \
-| jq .
-```
-```json
-{
-  "partition": 0,
-  "offset": 0,
-  "event": {
-    "event_time": "2019-10-01 00:00:00 UTC",
-    "event_type": "view",
-    "product_id": "44600062",
-    "category_id": "2103807459595387724",
-    "category_code": "",
-    "brand": "shiseido",
-    "price": "35.79",
-    "user_id": "541312140",
-    "user_session": "72d76fde-8bb3-4e00-8c23-a032dfed738c"
-  }
-}
-```
+1. How should historical batch analytics be adapted to stateful stream processing?
+2. How can streaming systems be designed for reliability through replay, checkpointing, and fault tolerance?
+3. How can analytical and operational workloads be supported from a single streaming pipeline?
