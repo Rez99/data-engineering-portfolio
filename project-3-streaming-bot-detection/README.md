@@ -72,7 +72,7 @@ The platform continuously produces the following artifacts:
 ## 1.3 End-to-End Workflow
 At a high level, the streaming platform supports two complementary workloads: historical analytics and real-time operational analytics.
 ```mermaid
-flowchart LR
+flowchart TD
 
     DATA([Clickstream Data])
 
@@ -88,7 +88,7 @@ flowchart LR
 ```
 The following workflow expands this view to show how replayed clickstream events flow through Kafka topics and Flink jobs to produce each output.
 ```mermaid
-flowchart LR
+flowchart TD
 
     DATA([Clickstream Data])
 
