@@ -137,7 +137,7 @@ services:
       - |
         JAR=/opt/flink/data/flink/generated/operational-bot-scoring.jar
         if [[ ! -f "$${JAR}" ]]; then
-          echo "Missing $${JAR}. Run ./infra/scripts/build_operational_job.sh first." >&2
+          echo "Missing $${JAR}. Run ./infra/scripts/infra_setup_m4.sh first." >&2
           exit 1
         fi
         /opt/flink/bin/flink run -d \
@@ -149,7 +149,7 @@ services:
           "$${JAR}" \
           --bot-config /opt/flink/batch/artifacts/bot_config.json \
           --normalization-values /opt/flink/data/flink/generated/normalization_values.csv \
-          --parallelism 2
+          --parallelism 3
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager

@@ -147,3 +147,70 @@ flowchart TD
 `*` Iceberg integration demonstrated in Projects 1 & 2.
 
 # 2. Follow One Session
+```bash
+docker compose -f infra/compose/duckdb.yml run --rm duckdb
+```
+```sql
+SELECT
+    user_session,
+    COUNT(*) AS event_count,
+    MIN(event_time) as min_event_time,
+    MAX(event_time) as max_event_time
+FROM read_csv_auto('/work/data/source/2019-Oct.csv.gz')
+GROUP BY user_session
+ORDER BY event_count DESC
+LIMIT 5;
+```
+```sql
+SELECT
+    *
+FROM read_csv_auto('/work/data/source/2019-Oct.csv.gz')
+WHERE user_session = 'b2101293-44c1-4814-836a-94b0c03bb9c2';
+```
+---
+```bash
+docker compose -f infra/compose/postgres.yml exec postgres \
+  psql -U clickstream -d clickstream
+```  
+```sql
+SELECT
+    user_session,
+    event_count,
+    bot_score,
+    session_status,
+    last_event_time
+FROM session_bot_scores
+WHERE is_bot IS TRUE
+ORDER BY event_count DESC
+LIMIT 20;
+```
+a3ecd197-a324-43bf-bfb0-f16e2820c23f
+
+
+
+user_session = 'b2101293-44c1-4814-836a-94b0c03bb9c2' has 1159 events in 2019-Oct.csv.gz but has only 9 event count in session_bot_scores
+clickstream=# select * from session_bot_scores where user_session = 'fb075266-182d-4c11-b5f7-4e4dcdabd4a7';
+             user_session             |   last_event_time   | event_count | interval_count | mean_click_interval_ms | min_click_interval_ms | sd_click_interval_ms |      bot_score      | is_bot |       updated_at        | session_status | closed_at 
+--------------------------------------+---------------------+-------------+----------------+------------------------+-----------------------+----------------------+---------------------+--------+-------------------------+----------------+-----------
+ fb075266-182d-4c11-b5f7-4e4dcdabd4a7 | 2019-10-07 12:48:04 |           9 |              1 |                  60000 |                 60000 |                    0 | 0.47333333333333333 | f      | 2026-07-05 04:31:48.065 | active         | 
+
+ how cam event count = 9, interval count  =1? wouldn't we excpect 8 intervals?
+
+ WITH session_events AS (
+    SELECT
+        CAST(event_time AS TIMESTAMP) AS event_time
+    FROM read_csv_auto('/work/data/source/2019-Oct.csv.gz')
+    WHERE user_session = 'fb075266-182d-4c11-b5f7-4e4dcdabd4a7'
+),
+intervals AS (
+    SELECT
+        event_time,
+        LAG(event_time) OVER (ORDER BY event_time) AS previous_event_time,
+        EXTRACT(EPOCH FROM (
+            event_time - LAG(event_time) OVER (ORDER BY event_time)
+        )) AS interval_seconds
+    FROM session_events
+)
+SELECT
+    MAX(interval_seconds) AS max_interval_seconds
+FROM intervals;

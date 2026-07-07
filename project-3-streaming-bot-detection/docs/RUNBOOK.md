@@ -16,10 +16,10 @@ flowchart LR
     B["Platform Ready"]
     C["Data Present"]
 
-    A -->|setup_all_infra.sh| B
+    A -->|infra_setup_all.sh| B
     B -->|replay_data.py| C
-    C -->|reset_data.sh| B
-    B -->|reset_all_infra.sh| A
+    C -->|data_reset.sh| B
+    B -->|infra_reset_all.sh| A
 ```
 
 ## Quick Start
@@ -33,7 +33,7 @@ cd /Users/rezwanhoppe-islam/data-engineering-portfolio/project-3-streaming-bot-d
 Ask the project where you are:
 
 ```bash
-./infra/scripts/state.sh
+./infra/scripts/state_show.sh
 ```
 
 The script prints:
@@ -45,7 +45,16 @@ Next valid action:
 Why: ...
 ```
 
-Follow the `Next valid action` returned by the script. After that action finishes, run `./infra/scripts/state.sh` again.
+Follow the `Next valid action` returned by the script. After that action finishes, run `./infra/scripts/state_show.sh` again.
+
+To run the whole pipeline:
+```bash
+python3 streaming/replay_data.py \
+    --sink kafka \
+    --speed 10000x \
+    --quiet \
+    --progress-every 500000
+```
 
 ## Useful URLs
 

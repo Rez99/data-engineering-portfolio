@@ -13,25 +13,42 @@ COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/postgres.yml"
 )
 
-create_topic_if_missing() {
+require_topic() {
   local topic="$1"
-  local partitions="$2"
-  local retention_ms="$3"
 
-  if docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
+  if ! docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
     rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
-    echo "Topic already exists: ${topic}"
-    return
+    echo "M2 setup failed: Kafka topic is missing: ${topic}" >&2
+    echo "Run ./infra/scripts/infra_setup_m1.sh first." >&2
+    exit 1
   fi
-
-  docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic create "${topic}" \
-      --brokers localhost:9092 \
-      --partitions "${partitions}" \
-      --replicas 1 \
-      --topic-config "retention.ms=${retention_ms}" \
-      --topic-config "cleanup.policy=delete"
 }
+
+cancel_flink_job_by_name() {
+  local job_name="$1"
+
+  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
+    "/opt/flink/bin/flink list -r | awk -v job='${job_name}' '\$0 ~ job {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+}
+
+wait_for_flink_job() {
+  local job_name="$1"
+
+  for _ in {1..30}; do
+    if docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"; then
+      return
+    fi
+    sleep 2
+  done
+
+  echo "M2 setup failed: timed out waiting for Flink job: ${job_name}" >&2
+  exit 1
+}
+
+require_topic clickstream-raw
+require_topic clickstream-clean
+require_topic clickstream-dlq
 
 mkdir -p "${CONNECTOR_DIR}"
 if [[ ! -f "${KAFKA_CONNECTOR_JAR}" ]]; then
@@ -39,16 +56,11 @@ if [[ ! -f "${KAFKA_CONNECTOR_JAR}" ]]; then
   curl -fL "${KAFKA_CONNECTOR_URL}" -o "${KAFKA_CONNECTOR_JAR}"
 fi
 
-docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans redpanda redpanda-console jobmanager taskmanager
+docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans jobmanager taskmanager
 
-echo "Creating M1/M2 topics..."
-create_topic_if_missing clickstream-raw 3 604800000
-create_topic_if_missing clickstream-clean 3 604800000
-create_topic_if_missing clickstream-dlq 1 1209600000
-
-docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-  "/opt/flink/bin/flink list -r | awk '/ : / {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel"
+cancel_flink_job_by_name m2-clickstream-validation
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
+wait_for_flink_job m2-clickstream-validation
 
 echo
 echo "M2 validation layer is starting."

@@ -1,6 +1,14 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm2-clickstream-validation';
-SET 'parallelism.default' = '2';
+SET 'parallelism.default' = '3';
+
+SET 'execution.checkpointing.interval' = '10s';
+SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
+SET 'execution.checkpointing.timeout' = '300s';
+SET 'execution.checkpointing.min-pause' = '5s';
+SET 'execution.checkpointing.externalized-checkpoint-retention' = 'RETAIN_ON_CANCELLATION';
+SET 'state.checkpoints.dir' = 'file:///opt/flink/data/flink/checkpoints/m2-validation';
+
 SET 'restart-strategy.type' = 'fixed-delay';
 SET 'restart-strategy.fixed-delay.attempts' = '10';
 SET 'restart-strategy.fixed-delay.delay' = '5s';
@@ -12,7 +20,7 @@ CREATE TABLE raw_clickstream (
   'topic' = 'clickstream-raw',
   'properties.bootstrap.servers' = 'redpanda:9092',
   'properties.group.id' = 'm2-validation',
-  'scan.startup.mode' = 'latest-offset',
+  'scan.startup.mode' = 'earliest-offset',
   'format' = 'raw'
 );
 

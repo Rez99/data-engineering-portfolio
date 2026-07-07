@@ -209,10 +209,10 @@ data/flink/generated/normalization_values.csv
 data/flink/generated/operational-bot-scoring.jar
 ```
 
-The jar is built with:
+The jar is built during M4 setup:
 
 ```bash
-./infra/scripts/build_operational_job.sh
+./infra/scripts/infra_setup_m4.sh
 ```
 
-`setup_m4.sh`, `setup_m6.sh`, and `setup_all_infra.sh` build or require this jar before starting the operational job.
+`infra_setup_m4.sh` builds this jar before starting the operational job. `infra_setup_all.sh` reaches the same build step by running M4 in sequence.

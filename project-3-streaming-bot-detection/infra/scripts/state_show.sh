@@ -151,10 +151,10 @@ if platform_ready; then
 State: Data Present
 
 Next valid action:
-  ./infra/scripts/reset_data.sh
+  ./infra/scripts/data_reset.sh
 
 Other valid action:
-  ./infra/scripts/reset_all_infra.sh
+  ./infra/scripts/infra_reset_all.sh
 
 Why:
 REPORT
@@ -167,7 +167,7 @@ Next valid action:
   python3 streaming/replay_data.py --start-row 100000 --rows 1000000 --speed 100x --sink kafka --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 100000
 
 Other valid action:
-  ./infra/scripts/reset_all_infra.sh
+  ./infra/scripts/infra_reset_all.sh
 
 Why:
 REPORT
@@ -178,7 +178,7 @@ else
 State: Start
 
 Next valid action:
-  ./infra/scripts/setup_all_infra.sh
+  ./infra/scripts/infra_setup_all.sh
 
 Why:
 REPORT

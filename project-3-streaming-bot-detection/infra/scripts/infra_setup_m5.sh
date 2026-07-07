@@ -16,10 +16,16 @@ STREAMING_COMPOSE_FILES=(
 
 cd "${PROJECT_DIR}"
 
-docker compose "${COMPOSE_FILES[@]}" up -d postgres grafana
+docker compose "${COMPOSE_FILES[@]}" up -d grafana
 
-docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
-  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
+tables_exist="$(docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
+  psql -U clickstream -d clickstream -At -c "SELECT to_regclass('public.session_bot_scores') IS NOT NULL AND to_regclass('public.stream_bot_metrics') IS NOT NULL;" | tr -d '\r')"
+
+if [[ "${tables_exist}" != "t" ]]; then
+  echo "M5 setup failed: PostgreSQL operational tables are missing." >&2
+  echo "Run ./infra/scripts/infra_setup_m4.sh first." >&2
+  exit 1
+fi
 
 session_rows="$(docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
   psql -U clickstream -d clickstream -At -c "SELECT COUNT(*) FROM session_bot_scores;" | tr -d '\r')"

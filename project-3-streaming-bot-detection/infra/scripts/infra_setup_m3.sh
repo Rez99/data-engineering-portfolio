@@ -17,24 +17,32 @@ COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/postgres.yml"
 )
 
-create_topic_if_missing() {
+require_topic() {
   local topic="$1"
-  local partitions="$2"
-  local retention_ms="$3"
 
-  if docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
+  if ! docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
     rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
-    echo "Topic already exists: ${topic}"
-    return
+    echo "M3 setup failed: Kafka topic is missing: ${topic}" >&2
+    echo "Run ./infra/scripts/infra_setup_m1.sh first." >&2
+    exit 1
   fi
+}
 
-  docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic create "${topic}" \
-      --brokers localhost:9092 \
-      --partitions "${partitions}" \
-      --replicas 1 \
-      --topic-config "retention.ms=${retention_ms}" \
-      --topic-config "cleanup.policy=delete"
+wait_for_flink_job() {
+  local job_name="$1"
+  local setup_hint="$2"
+
+  for _ in {1..30}; do
+    if docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"; then
+      return
+    fi
+    sleep 2
+  done
+
+  echo "M3 setup failed: required Flink job is not running: ${job_name}" >&2
+  echo "${setup_hint}" >&2
+  exit 1
 }
 
 download_if_missing() {
@@ -48,20 +56,18 @@ download_if_missing() {
 }
 
 mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/analytics"
+require_topic clickstream-clean
 download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
 download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
 download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
 
-docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans redpanda redpanda-console jobmanager taskmanager
-
-echo "Creating M1/M2/M3 topics..."
-create_topic_if_missing clickstream-raw 3 604800000
-create_topic_if_missing clickstream-clean 3 604800000
-create_topic_if_missing clickstream-dlq 1 1209600000
+docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans jobmanager taskmanager
+wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2.sh first."
 
 docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-  "/opt/flink/bin/flink list -r | awk '/ : / {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel"
-docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job analytics-job
+  "/opt/flink/bin/flink list -r | awk '/m3-clean-clickstream-parquet/ {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-job
+wait_for_flink_job m3-clean-clickstream-parquet "Check analytics-job logs for submission errors."
 
 echo
 echo "M3 analytical pipeline is starting."

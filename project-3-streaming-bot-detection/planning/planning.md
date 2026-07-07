@@ -518,20 +518,19 @@ The Kafka environment includes three topics:
 
 ## 3.3 Running the milestones
 
-Each milestone provides utility scripts for provisioning, resetting, and, where useful, verifying that milestone:
+Each milestone provides utility scripts for provisioning and resetting that milestone:
 
-* `setup_m*.sh` provisions the infrastructure required for that milestone.
-* `reset_m*.sh` removes any generated state for that milestone, allowing it to be rerun from a clean starting point.
-* `verify_m*.sh` reports or validates the expected outputs for that milestone when a verification script is useful.
+* `infra_setup_m*.sh` provisions the infrastructure required for that milestone.
+* `infra_reset_m*.sh` removes any generated state for that milestone, allowing it to be rerun from a clean starting point.
 
 In addition, the project provides complete-platform scripts for operating the finished system without thinking in terms of individual milestones:
 
-* `setup_all_infra.sh` provisions the complete streaming stack required to execute the full pipeline.
-* `reset_data.sh` clears processed runtime state for the complete stack while keeping infrastructure containers running.
-* `reset_all_infra.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
-* `verify_all.sh` verifies representative health across the completed platform, including the replay application, Kafka topics, validation metrics, analytical dataset state, operational artifacts, Grafana, running Flink jobs, and observability endpoints.
+* `infra_setup_all.sh` provisions the complete streaming stack required to execute the full pipeline.
+* `data_reset.sh` clears processed runtime state for the complete stack while keeping infrastructure containers running.
+* `infra_reset_all.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
+* `state_show.sh` reports the current platform state and the next valid action.
 
-The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code. Verification scripts are read-only with respect to source code and are intended to confirm the current state of the platform after setup, reset, or replay.
+The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code.
 
 ## 3.4 Running the pipeline
 
@@ -549,15 +548,15 @@ python streaming/replay_data.py --rows 20 --speed 1x --sink console
 python streaming/replay_data.py --rows 1000 --speed 100x --sink kafka
 ```
 
-| Milestone | Setup          | Reset          | Verify          | Status |
-| --------- | -------------- | -------------- | --------------- | ------ |
-| M1        | `setup_m1.sh`  | `reset_m1.sh`  | —               | 🟢 Complete |
-| M2        | `setup_m2.sh`  | `reset_m2.sh`  | `verify_m2.sh`  | 🟢 Complete |
-| M3        | `setup_m3.sh`  | `reset_m3.sh`  | `verify_m3.sh`  | 🟢 Complete |
-| M4        | `setup_m4.sh`  | `reset_m4.sh`  | `verify_m4.sh`  | 🟢 Complete |
-| M5        | `setup_m5.sh`  | `reset_m5.sh`  | `verify_m5.sh`  | 🟢 Complete |
-| M6        | `setup_m6.sh`  | `reset_m6.sh`  | `verify_m6.sh`  | 🟢 Complete |
-| All       | `setup_all_infra.sh` | `reset_all_infra.sh` | `verify_all.sh` | 🟢 Complete |
+| Milestone | Setup          | Reset          | Status |
+| --------- | -------------- | -------------- | ------ |
+| M1        | `infra_setup_m1.sh`  | `infra_reset_m1.sh`  | 🟢 Complete |
+| M2        | `infra_setup_m2.sh`  | `infra_reset_m2.sh`  | 🟢 Complete |
+| M3        | `infra_setup_m3.sh`  | `infra_reset_m3.sh`  | 🟢 Complete |
+| M4        | `infra_setup_m4.sh`  | `infra_reset_m4.sh`  | 🟢 Complete |
+| M5        | `infra_setup_m5.sh`  | `infra_reset_m5.sh`  | 🟢 Complete |
+| M6        | `infra_setup_m6.sh`  | `infra_reset_m6.sh`  | 🟢 Complete |
+| All       | `infra_setup_all.sh` | `infra_reset_all.sh` | 🟢 Complete |
 
 
 
@@ -638,7 +637,7 @@ M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhos
 | **M6.3** | Monitor validation quality | - The validation job exposes valid record count, invalid record count, and DLQ rate through Kafka topic movement, consumer lag, and Flink operator metrics.<br>- Increasing the replay engine corruption probability causes a visible increase in `clickstream-dlq` activity.<br>- DLQ records can be inspected to identify the original payload and validation failure reason. | 🟢 Complete |
 | **M6.4** | Monitor Flink           | - The Flink Web UI displays the running validation, analytical observer, and operational streaming jobs and their operator graphs.<br>- Operator throughput, checkpoint status, and backpressure metrics are visible while the replay engine is running.<br>- Increasing the replay speed demonstrates changes in throughput and, where applicable, backpressure within the Flink jobs. | 🟢 Complete |
 
-M6 closeout verification confirmed Redpanda Console is reachable at `http://localhost:8080`, the Flink Web UI is reachable at `http://localhost:8081`, and the Kafka topics `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` are present. The running Flink jobs are `m2-clickstream-validation`, `m6-analytics-observer`, and `m4-operational-bot-scoring`. The observer job provides a lightweight live analytical workload for monitoring without restarting the historical M3 Parquet writer against the full clean-topic backlog. A 5,000-event replay with 5% corruption and a 20-event replay with 100% corruption completed successfully, `clickstream-dlq` retained inspectable records with original payloads and failure reasons, `m4-operational-bot-scoring` had completed 301 checkpoints and restored from checkpoint 5 times, and `verify_m6.sh` reported Kafka consumer groups, checkpoint counts, Flink throughput/backpressure metrics, DLQ topic details, and a DLQ sample record. The old stopped `m3-analytics` consumer group may still show historical lag because it belongs to the completed M3 materialization job rather than the live M6 observer path.
+M6 closeout confirmed Redpanda Console is reachable at `http://localhost:8080`, the Flink Web UI is reachable at `http://localhost:8081`, and the Kafka topics `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` are present. The running Flink jobs are `m2-clickstream-validation`, `m6-analytics-observer`, and `m4-operational-bot-scoring`. The observer job provides a lightweight live analytical workload for monitoring without restarting the historical M3 Parquet writer against the full clean-topic backlog. A 5,000-event replay with 5% corruption and a 20-event replay with 100% corruption completed successfully, `clickstream-dlq` retained inspectable records with original payloads and failure reasons, and `m4-operational-bot-scoring` had completed 301 checkpoints and restored from checkpoint 5 times. The old stopped `m3-analytics` consumer group may still show historical lag because it belongs to the completed M3 materialization job rather than the live M6 observer path.
 
 # 4 Repository Structure
 
@@ -671,27 +670,22 @@ project-3-streaming-bot-detection/
 │   │   ├── grafana.yml
 │   │   └── kafka-ui.yml
 │   ├── scripts/
-│   │   ├── setup_m1.sh
-│   │   ├── reset_m1.sh
-│   │   ├── setup_m2.sh
-│   │   ├── reset_m2.sh
-│   │   ├── verify_m2.sh
-│   │   ├── setup_m3.sh
-│   │   ├── reset_m3.sh
-│   │   ├── setup_m4.sh
-│   │   ├── reset_m4.sh
-│   │   ├── verify_m4.sh
-│   │   ├── m4_fault_tolerance.sh
-│   │   ├── setup_m5.sh
-│   │   ├── reset_m5.sh
-│   │   ├── verify_m5.sh
-│   │   ├── setup_m6.sh
-│   │   ├── reset_m6.sh
-│   │   ├── verify_m6.sh
-│   │   ├── setup_all_infra.sh
-│   │   ├── reset_data.sh
-│   │   ├── reset_all_infra.sh
-│   │   └── verify_all.sh
+│   │   ├── infra_setup_m1.sh
+│   │   ├── infra_reset_m1.sh
+│   │   ├── infra_setup_m2.sh
+│   │   ├── infra_reset_m2.sh
+│   │   ├── infra_setup_m3.sh
+│   │   ├── infra_reset_m3.sh
+│   │   ├── infra_setup_m4.sh
+│   │   ├── infra_reset_m4.sh
+│   │   ├── infra_setup_m5.sh
+│   │   ├── infra_reset_m5.sh
+│   │   ├── infra_setup_m6.sh
+│   │   ├── infra_reset_m6.sh
+│   │   ├── infra_setup_all.sh
+│   │   ├── data_reset.sh
+│   │   ├── infra_reset_all.sh
+│   │   └── state_show.sh
 │   └── grafana/
 │       ├── dashboards/
 │       │   └── bot-detection-live.json

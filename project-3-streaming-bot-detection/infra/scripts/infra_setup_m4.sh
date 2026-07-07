@@ -4,12 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
-PARQUET_DIR="${PROJECT_DIR}/data/analytics/clickstream"
-PARQUET_GLOB="/work/data/analytics/clickstream/event_date=*/part-*"
+SOURCE_CSV="${PROJECT_DIR}/data/source/2019-Oct.csv.gz"
+SOURCE_CSV_DOCKER="/work/data/source/2019-Oct.csv.gz"
 NORMALIZATION_SQL_PATH="${PROJECT_DIR}/batch/normalization.sql"
 GENERATED_FLINK_DIR="${PROJECT_DIR}/data/flink/generated"
 NORMALIZATION_VALUES_CSV="${GENERATED_FLINK_DIR}/normalization_values.csv"
 CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
+JAVA_DIR="${PROJECT_DIR}/streaming/java"
+OPERATIONAL_JAR="${GENERATED_FLINK_DIR}/operational-bot-scoring.jar"
+MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-17}"
 KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
 KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
 PARQUET_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-parquet-1.19.1.jar"
@@ -27,7 +30,7 @@ STREAMING_COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/flink.yml"
   -f "${PROJECT_DIR}/infra/compose/postgres.yml"
 )
-EVENTS_VIEW_SQL="CREATE OR REPLACE TEMP VIEW events AS SELECT * FROM read_parquet('${PARQUET_GLOB}', hive_partitioning = true);"
+EVENTS_VIEW_SQL="CREATE OR REPLACE TEMP VIEW events AS SELECT * FROM read_csv_auto('${SOURCE_CSV_DOCKER}');"
 
 cd "${PROJECT_DIR}"
 
@@ -41,45 +44,64 @@ download_if_missing() {
   fi
 }
 
-create_topic_if_missing() {
+require_topic() {
   local topic="$1"
-  local partitions="$2"
-  local retention_ms="$3"
 
-  if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
+  if ! docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
     rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
-    echo "Topic already exists: ${topic}"
-    return
-  fi
-
-  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic create "${topic}" \
-      --brokers localhost:9092 \
-      --partitions "${partitions}" \
-      --replicas 1 \
-      --topic-config "retention.ms=${retention_ms}" \
-      --topic-config "cleanup.policy=delete"
-}
-
-cancel_running_flink_jobs_if_available() {
-  if docker compose "${STREAMING_COMPOSE_FILES[@]}" ps -q jobmanager >/dev/null 2>&1; then
-    docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-      "/opt/flink/bin/flink list -r | awk '/ : / {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+    echo "M4 setup failed: Kafka topic is missing: ${topic}" >&2
+    echo "Run ./infra/scripts/infra_setup_m1.sh first." >&2
+    exit 1
   fi
 }
 
-cancel_running_flink_jobs_if_available
+wait_for_flink_job() {
+  local job_name="$1"
+  local setup_hint="$2"
 
-if [[ ! -d "${PARQUET_DIR}" ]]; then
-  echo "M4 setup failed: M3 Parquet dataset not found at ${PARQUET_DIR}" >&2
+  for _ in {1..30}; do
+    if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"; then
+      return
+    fi
+    sleep 2
+  done
+
+  echo "M4 setup failed: required Flink job is not running: ${job_name}" >&2
+  echo "${setup_hint}" >&2
   exit 1
-fi
+}
 
-partition_count="$(find "${PARQUET_DIR}" -type d -name 'event_date=*' | wc -l | tr -d '[:space:]')"
-parquet_file_count="$(find "${PARQUET_DIR}" -type f -name 'part-*' ! -name '*.inprogress*' | wc -l | tr -d '[:space:]')"
+cancel_flink_job_by_name() {
+  local job_name="$1"
 
-if [[ "${partition_count}" -eq 0 || "${parquet_file_count}" -eq 0 ]]; then
-  echo "M4 setup failed: expected completed partitioned Parquet files in ${PARQUET_DIR}" >&2
+  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
+    "/opt/flink/bin/flink list -r | awk -v job='${job_name}' '\$0 ~ job {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+}
+
+build_operational_job() {
+  mkdir -p "${GENERATED_FLINK_DIR}"
+
+  docker run --rm \
+    -v "${JAVA_DIR}:/work" \
+    -v "${GENERATED_FLINK_DIR}/m2:/root/.m2" \
+    -w /work \
+    "${MAVEN_IMAGE}" \
+    mvn -q -DskipTests package
+
+  cp "${JAVA_DIR}/target/operational-bot-scoring-1.0.0.jar" \
+    "${OPERATIONAL_JAR}"
+
+  cat <<REPORT
+Operational Flink job built:
+  data/flink/generated/operational-bot-scoring.jar
+REPORT
+}
+
+require_topic clickstream-clean
+
+if [[ ! -f "${SOURCE_CSV}" ]]; then
+  echo "M4 setup failed: source dataset not found at ${SOURCE_CSV}" >&2
   exit 1
 fi
 
@@ -125,7 +147,7 @@ write_normalization_values_csv() {
 
 if [[ -f "${ARTIFACT_DIR}/normalization.parquet" && -f "${ARTIFACT_DIR}/bot_config.json" ]]; then
   echo "M4 reference artifacts already exist; reusing batch/artifacts."
-  echo "Run ./infra/scripts/reset_m4.sh first if you need to regenerate them."
+  echo "Run ./infra/scripts/infra_reset_m4.sh first if you need to regenerate them."
 else
 source_rows="$(duckdb_scalar "SELECT COUNT(*) FROM events;")"
 schema_csv="$(duckdb_csv "DESCRIBE SELECT * FROM events;")"
@@ -219,9 +241,7 @@ cat > "${ARTIFACT_DIR}/bot_config.json" <<CONFIG
     "metric": "max_click_interval_ms",
     "percentile": 99
   },
-  "source_dataset": "data/analytics/clickstream",
-  "source_event_date_partitions": ${partition_count},
-  "source_parquet_files": ${parquet_file_count},
+  "source_dataset": "data/source/2019-Oct.csv.gz",
   "source_row_count": ${source_rows}
 }
 CONFIG
@@ -234,10 +254,10 @@ download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
 download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
 download_if_missing "${JDBC_CONNECTOR_URL}" "${JDBC_CONNECTOR_JAR}"
 download_if_missing "${POSTGRES_DRIVER_URL}" "${POSTGRES_DRIVER_JAR}"
-"${SCRIPT_DIR}/build_operational_job.sh"
+build_operational_job
 
 docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --remove-orphans \
-  redpanda redpanda-console jobmanager taskmanager postgres
+  postgres
 
 echo "Waiting for PostgreSQL..."
 for _ in {1..30}; do
@@ -254,16 +274,14 @@ if ! docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
   exit 1
 fi
 
-echo "Creating M4 topics..."
-create_topic_if_missing clickstream-raw 3 604800000
-create_topic_if_missing clickstream-clean 3 604800000
-create_topic_if_missing clickstream-dlq 1 1209600000
+wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2.sh first."
 
 docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
   psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
 
-cancel_running_flink_jobs_if_available
-docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate validation-job operational-job
+cancel_flink_job_by_name m4-operational-bot-scoring
+docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate operational-job
+wait_for_flink_job m4-operational-bot-scoring "Check operational-job logs for submission errors."
 
 echo
 echo "M4 operational pipeline is starting."
