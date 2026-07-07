@@ -51,9 +51,9 @@ To run the whole pipeline:
 ```bash
 python3 streaming/replay_data.py \
     --sink kafka \
-    --speed 10000x \
+    --speed 100000x \
     --quiet \
-    --progress-every 500000
+    --progress-every 5000000
 ```
 
 ## Useful URLs

@@ -28,12 +28,12 @@ create_topic_if_missing() {
       --topic-config "cleanup.policy=delete"
 }
 
-docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans redpanda redpanda-console
+docker compose "${COMPOSE_FILES[@]}" up -d redpanda redpanda-console
 
 echo "Creating M1 topics..."
 create_topic_if_missing clickstream-raw 3 604800000
 create_topic_if_missing clickstream-clean 3 604800000
-create_topic_if_missing clickstream-dlq 1 1209600000
+create_topic_if_missing clickstream-dlq 1 604800000
 
 echo
 echo "M1 broker is ready."

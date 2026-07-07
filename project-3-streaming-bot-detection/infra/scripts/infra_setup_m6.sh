@@ -40,17 +40,8 @@ docker compose "${COMPOSE_FILES[@]}" up -d \
   redpanda-console grafana
 
 wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2.sh first."
-
-if flink_running_jobs | grep -q 'm3-clean-clickstream-parquet'; then
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-    "/opt/flink/bin/flink list -r | awk '/m3-clean-clickstream-parquet/ {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
-fi
-
+wait_for_flink_job m3-clean-clickstream-parquet "Run ./infra/scripts/infra_setup_m3.sh first."
 wait_for_flink_job m4-operational-bot-scoring "Run ./infra/scripts/infra_setup_m4.sh first."
-
-if ! flink_running_jobs | grep -q 'm6-analytics-observer'; then
-  docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-observer-job
-fi
 
 cat <<REPORT
 M6 observability stack is starting.

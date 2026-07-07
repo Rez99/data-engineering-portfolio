@@ -1,6 +1,6 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm2-clickstream-validation';
-SET 'parallelism.default' = '3';
+SET 'parallelism.default' = '2';
 
 SET 'execution.checkpointing.interval' = '10s';
 SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';

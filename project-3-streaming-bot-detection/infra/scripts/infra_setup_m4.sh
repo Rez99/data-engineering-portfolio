@@ -72,11 +72,11 @@ wait_for_flink_job() {
   exit 1
 }
 
-cancel_flink_job_by_name() {
+flink_job_running() {
   local job_name="$1"
 
-  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-    "/opt/flink/bin/flink list -r | awk -v job='${job_name}' '\$0 ~ job {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
+    /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"
 }
 
 build_operational_job() {
@@ -256,7 +256,7 @@ download_if_missing "${JDBC_CONNECTOR_URL}" "${JDBC_CONNECTOR_JAR}"
 download_if_missing "${POSTGRES_DRIVER_URL}" "${POSTGRES_DRIVER_JAR}"
 build_operational_job
 
-docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --remove-orphans \
+docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d \
   postgres
 
 echo "Waiting for PostgreSQL..."
@@ -279,8 +279,9 @@ wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2
 docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
   psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
 
-cancel_flink_job_by_name m4-operational-bot-scoring
-docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate operational-job
+if ! flink_job_running m4-operational-bot-scoring; then
+  docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate operational-job
+fi
 wait_for_flink_job m4-operational-bot-scoring "Check operational-job logs for submission errors."
 
 echo

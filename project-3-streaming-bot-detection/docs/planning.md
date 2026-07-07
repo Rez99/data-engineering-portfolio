@@ -530,7 +530,7 @@ In addition, the project provides complete-platform scripts for operating the fi
 * `infra_reset_all.sh` removes complete-platform infrastructure and generated runtime artifacts while preserving source datasets, project configuration, reusable dependency files, and application code.
 * `state_show.sh` reports the current platform state and the next valid action.
 
-The setup and reset scripts are idempotent and do **not** execute the data pipeline. Instead, they prepare and reset the development environment. Generated artifacts (such as Kafka topics, Flink checkpoints, Parquet output, and PostgreSQL tables) may be recreated repeatedly without affecting the source dataset or application code.
+The setup scripts are idempotent convergence scripts: they create missing infrastructure, topics, tables, artifacts, and Flink jobs without canceling already-running jobs or clearing runtime data. Reset scripts are the explicit destructive path for removing generated state such as Kafka topic contents, Flink checkpoints, Parquet output, and PostgreSQL rows.
 
 ## 3.4 Running the pipeline
 
@@ -635,9 +635,9 @@ M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhos
 | **M6.1** | Deploy monitoring tools | - Redpanda Console and the Flink Web UI are running locally.<br>- Both tools are accessible from the development environment. | 🟢 Complete |
 | **M6.2** | Monitor Kafka           | - Redpanda Console displays the `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` topics and their active consumer groups.<br>- Consumer lag and message throughput are visible while the replay engine and Flink jobs are running.<br>- Running `python streaming/replay_data.py --rows 100000 --speed 100x` demonstrates the live Kafka metrics updating across raw and clean topics. | 🟢 Complete |
 | **M6.3** | Monitor validation quality | - The validation job exposes valid record count, invalid record count, and DLQ rate through Kafka topic movement, consumer lag, and Flink operator metrics.<br>- Increasing the replay engine corruption probability causes a visible increase in `clickstream-dlq` activity.<br>- DLQ records can be inspected to identify the original payload and validation failure reason. | 🟢 Complete |
-| **M6.4** | Monitor Flink           | - The Flink Web UI displays the running validation, analytical observer, and operational streaming jobs and their operator graphs.<br>- Operator throughput, checkpoint status, and backpressure metrics are visible while the replay engine is running.<br>- Increasing the replay speed demonstrates changes in throughput and, where applicable, backpressure within the Flink jobs. | 🟢 Complete |
+| **M6.4** | Monitor Flink           | - The Flink Web UI displays the running validation, Parquet writer, and operational streaming jobs and their operator graphs.<br>- Operator throughput, checkpoint status, and backpressure metrics are visible while the replay engine is running.<br>- Increasing the replay speed demonstrates changes in throughput and, where applicable, backpressure within the Flink jobs. | 🟢 Complete |
 
-M6 closeout confirmed Redpanda Console is reachable at `http://localhost:8080`, the Flink Web UI is reachable at `http://localhost:8081`, and the Kafka topics `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` are present. The running Flink jobs are `m2-clickstream-validation`, `m6-analytics-observer`, and `m4-operational-bot-scoring`. The observer job provides a lightweight live analytical workload for monitoring without restarting the historical M3 Parquet writer against the full clean-topic backlog. A 5,000-event replay with 5% corruption and a 20-event replay with 100% corruption completed successfully, `clickstream-dlq` retained inspectable records with original payloads and failure reasons, and `m4-operational-bot-scoring` had completed 301 checkpoints and restored from checkpoint 5 times. The old stopped `m3-analytics` consumer group may still show historical lag because it belongs to the completed M3 materialization job rather than the live M6 observer path.
+M6 closeout confirmed Redpanda Console is reachable at `http://localhost:8080`, the Flink Web UI is reachable at `http://localhost:8081`, and the Kafka topics `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` are present. The running Flink jobs are `m2-clickstream-validation`, `m3-clean-clickstream-parquet`, and `m4-operational-bot-scoring`, so the complete stack keeps both analytical storage and operational scoring live while M6 provides observability tools around those jobs. A 5,000-event replay with 5% corruption and a 20-event replay with 100% corruption completed successfully, `clickstream-dlq` retained inspectable records with original payloads and failure reasons, and `m4-operational-bot-scoring` had completed 301 checkpoints and restored from checkpoint 5 times.
 
 # 4 Repository Structure
 
@@ -699,7 +699,6 @@ project-3-streaming-bot-detection/
 │   ├── replay_data.py
 │   ├── flink_job_validation.sql
 │   ├── flink_job_analytics.sql
-│   ├── flink_job_analytics_observer.sql
 │   └── normalization_values.csv
 │
 ├── batch/

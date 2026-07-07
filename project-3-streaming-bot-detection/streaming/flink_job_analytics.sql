@@ -1,6 +1,6 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm3-clean-clickstream-parquet';
-SET 'parallelism.default' = '3';
+SET 'parallelism.default' = '2';
 SET 'execution.checkpointing.interval' = '10s';
 
 CREATE TABLE clean_clickstream (

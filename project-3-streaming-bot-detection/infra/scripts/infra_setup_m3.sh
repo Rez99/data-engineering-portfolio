@@ -45,6 +45,13 @@ wait_for_flink_job() {
   exit 1
 }
 
+flink_job_running() {
+  local job_name="$1"
+
+  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+    /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"
+}
+
 download_if_missing() {
   local url="$1"
   local destination="$2"
@@ -61,12 +68,12 @@ download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
 download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
 download_if_missing "${HADOOP_RUNTIME_URL}" "${HADOOP_RUNTIME_JAR}"
 
-docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans jobmanager taskmanager
+docker compose "${COMPOSE_FILES[@]}" up -d jobmanager taskmanager
 wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2.sh first."
 
-docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-  "/opt/flink/bin/flink list -r | awk '/m3-clean-clickstream-parquet/ {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
-docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-job
+if ! flink_job_running m3-clean-clickstream-parquet; then
+  docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-job
+fi
 wait_for_flink_job m3-clean-clickstream-parquet "Check analytics-job logs for submission errors."
 
 echo

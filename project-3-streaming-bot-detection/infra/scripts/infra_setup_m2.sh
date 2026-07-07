@@ -24,11 +24,11 @@ require_topic() {
   fi
 }
 
-cancel_flink_job_by_name() {
+flink_job_running() {
   local job_name="$1"
 
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager bash -lc \
-    "/opt/flink/bin/flink list -r | awk -v job='${job_name}' '\$0 ~ job {print \$4}' | xargs -r -n1 /opt/flink/bin/flink cancel" || true
+  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+    /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"
 }
 
 wait_for_flink_job() {
@@ -56,10 +56,11 @@ if [[ ! -f "${KAFKA_CONNECTOR_JAR}" ]]; then
   curl -fL "${KAFKA_CONNECTOR_URL}" -o "${KAFKA_CONNECTOR_JAR}"
 fi
 
-docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans jobmanager taskmanager
+docker compose "${COMPOSE_FILES[@]}" up -d jobmanager taskmanager
 
-cancel_flink_job_by_name m2-clickstream-validation
-docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
+if ! flink_job_running m2-clickstream-validation; then
+  docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
+fi
 wait_for_flink_job m2-clickstream-validation
 
 echo

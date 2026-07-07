@@ -85,7 +85,7 @@ docker compose "${COMPOSE_FILES[@]}" up -d \
 echo "Temporarily canceling Flink job listeners before deleting Kafka topics..."
 cancel_running_flink_jobs
 docker compose "${COMPOSE_FILES[@]}" rm -f \
-  validation-job analytics-job analytics-observer-job operational-job >/dev/null 2>&1 || true
+  validation-job analytics-job operational-job >/dev/null 2>&1 || true
 
 echo "Resetting Kafka topics..."
 delete_topic_if_exists clickstream-raw
@@ -93,7 +93,7 @@ delete_topic_if_exists clickstream-clean
 delete_topic_if_exists clickstream-dlq
 create_topic clickstream-raw 3 604800000
 create_topic clickstream-clean 3 604800000
-create_topic clickstream-dlq 1 1209600000
+create_topic clickstream-dlq 1 604800000
 
 echo "Removing generated Parquet output..."
 rm -rf "${PARQUET_DIR}"

@@ -108,7 +108,7 @@ platform_ready() {
     return 1
   fi
 
-  add_detail "Core services, Kafka topics, validation, Parquet writer, operational scoring, and PostgreSQL tables are available."
+  add_detail "Core services, Kafka topics, validation, Parquet writer, operational scoring, observability tools, and PostgreSQL tables are available."
 }
 
 data_present() {

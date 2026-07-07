@@ -195,7 +195,7 @@ clickstream=# select * from session_bot_scores where user_session = 'fb075266-18
  fb075266-182d-4c11-b5f7-4e4dcdabd4a7 | 2019-10-07 12:48:04 |           9 |              1 |                  60000 |                 60000 |                    0 | 0.47333333333333333 | f      | 2026-07-05 04:31:48.065 | active         | 
 
  how cam event count = 9, interval count  =1? wouldn't we excpect 8 intervals?
-
+```sql
  WITH session_events AS (
     SELECT
         CAST(event_time AS TIMESTAMP) AS event_time
@@ -214,3 +214,4 @@ intervals AS (
 SELECT
     MAX(interval_seconds) AS max_interval_seconds
 FROM intervals;
+```

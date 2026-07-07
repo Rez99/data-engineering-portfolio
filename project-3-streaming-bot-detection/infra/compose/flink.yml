@@ -6,14 +6,16 @@ services:
     platform: linux/amd64
     container_name: p3-flink-jobmanager
     command: jobmanager
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 1600m
         rest.address: jobmanager
         rest.bind-address: 0.0.0.0
-        taskmanager.numberOfTaskSlots: 8
+        taskmanager.numberOfTaskSlots: 12
         parallelism.default: 2
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
@@ -26,12 +28,14 @@ services:
     platform: linux/amd64
     container_name: p3-flink-taskmanager
     command: taskmanager
+    restart: unless-stopped
     depends_on:
       - jobmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 8
+        taskmanager.memory.process.size: 4096m
+        taskmanager.numberOfTaskSlots: 12
         parallelism.default: 2
     volumes:
       - ../../batch:/opt/flink/batch:ro
@@ -94,34 +98,6 @@ services:
       - ../../data:/opt/flink/data
     restart: "no"
 
-  analytics-observer-job:
-    image: apache/flink:1.19.1-scala_2.12-java17
-    platform: linux/amd64
-    container_name: p3-flink-analytics-observer-job
-    depends_on:
-      - jobmanager
-      - taskmanager
-      - redpanda
-    command:
-      - bash
-      - -lc
-      - |
-        /opt/flink/bin/sql-client.sh \
-          -l /opt/flink/usrlib \
-          -D execution.target=remote \
-          -D rest.address=jobmanager \
-          -f /opt/flink/jobs/flink_job_analytics_observer.sql
-    environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: jobmanager
-        rest.address: jobmanager
-    volumes:
-      - ../../streaming:/opt/flink/jobs:ro
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
-    restart: "no"
-
   operational-job:
     image: apache/flink:1.19.1-scala_2.12-java17
     platform: linux/amd64
@@ -149,7 +125,7 @@ services:
           "$${JAR}" \
           --bot-config /opt/flink/batch/artifacts/bot_config.json \
           --normalization-values /opt/flink/data/flink/generated/normalization_values.csv \
-          --parallelism 3
+          --parallelism 2
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
