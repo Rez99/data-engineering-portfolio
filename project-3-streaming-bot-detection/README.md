@@ -10,6 +10,7 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 | **[2. Follow One Session](#2-follow-one-session)** | 2.1 Inspect the Original Clickstream<br>2.2 Watch the Bot Score Evolve<br>2.3 View the Final Session State<br>2.4 Explain the Final Score |
 | **[3. Streaming Capabilities](#3-streaming-capabilities)** | 3.1 Data Flow<br>3.2 Stream Processing<br>3.3 Outputs<br>3.4 Reliability<br>3.5 Operations<br>3.6 Extensibility |
 | **[4. Deployment](#4-deployment)** | 4.1 Prerequisites<br>4.2 Repository Structure<br>4.3 Deployment State Model<br>4.4 Setup<br>4.5 Platform Services<br>4.6 Reset and Teardown |
+| **[5. Results](#5-results)** | 5.1 Kafka Topic Activity<br>5.2 Flink Job Execution<br>5.3 Live Bot Detection Dashboard<br>5.4 Operational Session Scores |
 
 # 1. What This Project Does
 ## 1.1 Problem Statement
@@ -212,6 +213,7 @@ As these events are replayed into Kafka, the operational pipeline maintains stat
 The bot score changes continuously as additional click intervals become available.
 
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#8B0000,#64748B"}}}}%%
 xychart-beta
     title "Session Bot Score"
     x-axis "Event sequence" [1,2,3,4,5,6,7,8,9,10]
@@ -464,6 +466,26 @@ python3 streaming/data_replay.py \
 
 The replay engine turns historical clickstream rows into a live Kafka event stream. After replay begins, the platform moves from `Platform Ready` to `Data Present`.
 
+### Replay Parameters
+
+The replay engine is configurable so the same source dataset can be used for quick local checks, fault-tolerance tests, and full historical replays.
+
+| Parameter | Purpose | Example |
+| --------- | ------- | ------- |
+| `--sink` | Choose whether events are printed locally or published to Kafka. | `--sink kafka` |
+| `--speed` | Scale event time relative to wall-clock time. Higher values stress the streaming jobs faster. | `--speed 100x` |
+| `--start-row` | Begin replay from a specific zero-based source row. | `--start-row 100000` |
+| `--rows` | Limit the number of source rows replayed for a bounded test run. | `--rows 1000000` |
+| `--full` | Replay the full source dataset. This is also the default when `--rows` is omitted. | `--full` |
+| `--delay-probability` | Simulate out-of-order arrival by delaying a fraction of events. | `--delay-probability 0.02` |
+| `--mean-delay-seconds` | Set the average artificial event-time delay for delayed events. | `--mean-delay-seconds 5` |
+| `--corrupt-probability` | Inject malformed records to exercise validation and DLQ handling. | `--corrupt-probability 0.02` |
+| `--random-seed` | Make delay and corruption simulation reproducible across runs. | `--random-seed 1` |
+| `--quiet` | Suppress per-event logs during larger runs. | `--quiet` |
+| `--progress-every` | Print compact progress updates every N dispatched events when quiet mode is enabled. | `--progress-every 100000` |
+
+Source and Kafka connection parameters are also configurable through `--dataset-path`, `--source-url`, `--kafka-topic`, `--kafka-brokers`, and `--compose-file`, but the defaults are designed for the local Docker Compose deployment.
+
 ## 4.5 Platform Services
 
 After a successful deployment, the following services are available:
@@ -493,3 +515,33 @@ The data reset keeps the platform running but clears replay outputs: Kafka topic
 ```
 
 The teardown script stops the Docker Compose platform, removes service volumes, clears generated analytics output, removes generated Flink artifacts, and returns the project to `Start`. Source data, code, Compose files, connector jars, and Grafana provisioning files are preserved.
+
+# 5. Results
+
+## 5.1 Kafka Topic Activity
+
+<img src="assets/redpanda_3_topics.png" alt="Redpanda Console showing raw clean and DLQ clickstream topics" width="1000">
+
+Redpanda Console shows the raw, clean, and dead-letter Kafka topics used by the streaming platform. This view confirms that replayed clickstream events are moving through the ingestion and validation layers.
+
+<img src="assets/redpanda_raw_topic.png" alt="Redpanda Console showing JSON messages in the raw clickstream topic" width="1000">
+
+The raw topic view shows replayed clickstream events arriving as JSON messages before validation. This provides a direct check that historical rows are being converted into an inspectable event stream.
+
+## 5.2 Flink Job Execution
+
+<img src="assets/flink.png" alt="Flink Web UI showing running validation analytics and operational jobs" width="1000">
+
+The Flink Web UI shows the running validation, analytical Parquet writer, and operational bot-scoring jobs. This view confirms that the platform is processing the clean stream continuously and maintaining checkpointed state.
+
+## 5.3 Live Bot Detection Dashboard
+
+<img src="assets/results/grafana_dashboard.png" alt="Grafana dashboard showing live bot detection metrics" width="1000">
+
+The Grafana dashboard visualizes live bot detection metrics from PostgreSQL, including active session scores, stream-level bot rates, and operational health signals.
+
+## 5.4 Operational Session Scores
+
+<img src="assets/results/session_scores.png" alt="PostgreSQL query showing operational session bot scores" width="1000">
+
+The operational scoring table stores continuously updated session-level bot scores. This output connects the live streaming pipeline back to the session walkthrough in Section 2.
