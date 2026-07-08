@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
-CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
+CONNECTOR_DIR="${PROJECT_DIR}/infra/flink/lib"
 KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
 KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
 PARQUET_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-parquet-1.19.1.jar"
@@ -66,7 +66,7 @@ download_if_missing() {
   fi
 }
 
-mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/analytics"
+mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/datasets/analytics"
 require_topic clickstream-clean
 download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
 download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
@@ -84,7 +84,7 @@ echo
 echo "M3 analytical pipeline is starting."
 echo "Flink UI: http://localhost:8081"
 echo "Redpanda Console: http://localhost:8080"
-echo "Parquet output: data/analytics/clickstream"
+echo "Parquet output: datasets/analytics/clickstream"
 echo
 echo "Analytics job logs:"
 docker compose "${COMPOSE_FILES[@]}" logs --tail 40 analytics-job

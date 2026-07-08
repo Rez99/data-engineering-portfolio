@@ -35,7 +35,7 @@ CREATE TABLE analytical_clickstream (
   event_date STRING
 ) PARTITIONED BY (event_date) WITH (
   'connector' = 'filesystem',
-  'path' = 'file:///opt/flink/data/analytics/clickstream',
+  'path' = 'file:///opt/flink/datasets/analytics/clickstream',
   'format' = 'parquet',
   'sink.partition-commit.trigger' = 'process-time',
   'sink.partition-commit.delay' = '0s',

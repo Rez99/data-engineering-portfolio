@@ -6,7 +6,7 @@
   - [1.4 High-level (Kappa) architecture](#14-high-level-kappa-architecture)
 - [2. Implementation sketch](#2-implementation-sketch)
   - [2.1 Producers -> Raw Kafka](#21-producers---raw-kafka)
-    - [2.1.1 Pseudo-logic for `replay_data.py`](#211-pseudo-logic-for-replay_datapy)
+    - [2.1.1 Pseudo-logic for `data_replay.py`](#211-pseudo-logic-for-data_replaypy)
     - [2.1.2 Mermaid diagram illustrating the replay logic](#212-mermaid-diagram-illustrating-the-replay-logic)
     - [2.1.3 Example console output to verify success](#213-example-console-output-to-verify-success)
   - [2.2 Kafka → Flink → Kafka validation layer](#22-kafka--flink--kafka-validation-layer)
@@ -147,7 +147,7 @@ Kappa treats both batch and real-time workloads as stream processing problems. I
 # 2. Implementation sketch
 ## 2.1 Producers -> Raw Kafka
 
-### 2.1.1 Pseudo-logic for `replay_data.py`
+### 2.1.1 Pseudo-logic for `data_replay.py`
 The goal of this component is to simulate a live clickstream by replaying historical events from the October 2019 dataset into the raw `clickstream-raw` Kafka topic. Rather than publishing the entire CSV as quickly as possible, the replay engine should emit events according to their original event timestamps, scaled by a configurable replay speed (e.g. 100×). The implementation should also support configurable network delay simulation, causing a subset of events to arrive out of order. Events are routed to dedicated producer workers based on their event type (view, cart, or purchase) before being published to the raw topic. The following pseudo-logic describes the expected behaviour; the implementation does not need to match it line-for-line, but should preserve the same observable behaviour.
 ```text
 1. Declare configuration
@@ -537,15 +537,15 @@ The setup scripts are idempotent convergence scripts: they create missing infras
 Once the desired infrastructure and Flink jobs are running, the streaming pipeline is executed by starting the replay engine:
 
 ```bash
-python streaming/replay_data.py [options]
+python streaming/data_replay.py [options]
 ```
 
 For example:
 
 ```bash
-python streaming/replay_data.py --rows 20 --speed 1x --sink console
+python streaming/data_replay.py --rows 20 --speed 1x --sink console
 
-python streaming/replay_data.py --rows 1000 --speed 100x --sink kafka
+python streaming/data_replay.py --rows 1000 --speed 100x --sink kafka
 ```
 
 | Milestone | Setup          | Reset          | Status |
@@ -566,7 +566,7 @@ python streaming/replay_data.py --rows 1000 --speed 100x --sink kafka
 
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
-| **M1.1** | Create replay application | - A Python application `streaming/replay_data.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-replay_datapy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
+| **M1.1** | Create replay application | - A Python application `streaming/data_replay.py` implementing the pseudo-logic described in [Section 2.1.1](#211-pseudo-logic-for-data_replaypy) executes successfully.<br>- The source CSV is downloaded automatically if it does not already exist.<br>- The source dataset is not re-downloaded if already present.<br>- Runtime configuration (e.g. replay speed, starting row, number of rows, debug mode) can be supplied via command-line arguments.<br>- The application is idempotent and can be executed repeatedly without overwriting the source dataset. | 🟢 Complete |
 | M1.2 | Implement replay engine | - A Python implementation of the replay engine described in Section 2.1 executes successfully.<br>- Running the replay at 1× speed produces a human-readable console trace demonstrating the expected replay behaviour, including event timestamp, send timestamp, event type, producer, delayed/out-of-order events, and intentionally corrupted events when enabled. <br>- Producer workers write to a temporary console sink, allowing routing and replay behaviour to be verified independently of Kafka.<br>- The replay engine preserves the complete source schema for uncorrupted events prior to publication.| 🟢 Complete |
 | M1.3	| Deploy event broker	| - Kafka (or Redpanda) is running locally.<br>- A raw `clickstream-raw` topic is created and ready to receive events.<br>- `clickstream-clean` and `clickstream-dlq` topics are created for downstream validation output.<br>- Retention policies appropriate for raw, clean, and DLQ topics are configured.| 🟢 Complete |
 | M1.4	| Publish replay events	| - Producer workers publish replay events to the raw `clickstream-raw` topic.<br>- A test consumer (or Redpanda Console/CLI) verifies that all replay events are successfully received.<br>- Delayed events are observed arriving out of event-time order, demonstrating the replay engine's delay simulation.<br>- Corrupt events are observed in the raw topic when corruption simulation is enabled.<br>- Redpanda Console is available at http://localhost:8080 and displays the broker and topics. | 🟢 Complete |
@@ -604,7 +604,7 @@ M3 closeout verification confirmed 31 `event_date` partitions from `2019-10-01` 
 |----|------|---------------------|--------|
 | **M4.1** | Deploy DuckDB | - DuckDB is installed and accessible from the local development environment.<br>- The partitioned Parquet dataset produced in Milestone 3 can be queried successfully from DuckDB.<br>- A simple validation query confirms the expected row count and schema. | 🟢 Complete |
 | **M4.2** | Generate normalization artifact | - DuckDB queries the historical Parquet dataset produced in Milestone 3 using the SQL described in [Section 2.4.3](#243-historical-normalization-lookup-table).<br>- Session-level click interval statistics (`mean`, `min`, `max`, `sd`) are computed from the complete validated October dataset.<br>- Historical percentile distributions (P0–P100) are generated for each statistic and persisted as `normalization.parquet`.<br>- Bot scoring configuration values, including a session inactivity timeout equal to the 99th percentile of the historical maximum click interval distribution, are persisted as `bot_config.json`.<br>- Both artifacts can be loaded into memory by the Flink bot scoring job at startup.| 🟢 Complete |
-| **M4.3** | Implement event-time session aggregation | - A stateful Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are partitioned by `user_session` using SQL `PARTITION BY` semantics.<br>- Event timestamps are assigned from the `event_time` field.<br>- A bounded out-of-orderness watermark strategy is configured to correctly process delayed events generated by the replay engine.<br>- Each incoming event updates session-level running state, allowing the running click interval statistics (`mean`, `min`, `sd`) to be derived incrementally.<br>- Running `python streaming/replay_data.py --rows 50 --speed 1x --delay-probability 0.2 --sink kafka` demonstrates that delayed valid events are accepted by the live operational pipeline.<br>- Session state TTL is parameterized from `bot_config.json`. | 🟢 Complete |
+| **M4.3** | Implement event-time session aggregation | - A stateful Flink job continuously consumes the `clickstream-clean` Kafka topic.<br>- Events are partitioned by `user_session` using SQL `PARTITION BY` semantics.<br>- Event timestamps are assigned from the `event_time` field.<br>- A bounded out-of-orderness watermark strategy is configured to correctly process delayed events generated by the replay engine.<br>- Each incoming event updates session-level running state, allowing the running click interval statistics (`mean`, `min`, `sd`) to be derived incrementally.<br>- Running `python streaming/data_replay.py --rows 50 --speed 1x --delay-probability 0.2 --sink kafka` demonstrates that delayed valid events are accepted by the live operational pipeline.<br>- Session state TTL is parameterized from `bot_config.json`. | 🟢 Complete |
 | **M4.4** | Compute **session-level** bot score | - `normalization.parquet` and `bot_config.json` are loaded during Flink job startup.<br>- The running session statistics (`mean`, `min`, `sd`) are mapped to their corresponding historical percentiles.<br>- A bot score is computed and updated for each incoming event. | 🟢 Complete |
 | **M4.5** | Compute **stream-level** bot metrics | - The stream of session-level bot scores is aggregated into the 5-minute tumbling windows described in [Section 2.4.2](#242-stream-level-bot-scoring).<br>- The bot rate and score histogram are computed continuously for each window.<br>- Running the replay engine demonstrates that stream-level metrics are updated as session bot scores change. | 🟢 Complete |
 | **M4.6** | Configure Flink checkpointing | - Periodic Flink checkpoints are enabled for the operational Flink job.<br>- A durable checkpoint storage location is configured.<br>- The Kafka source participates in Flink checkpointing so consumer offsets are captured with completed checkpoints.<br>- The PostgreSQL sink is configured to tolerate replayed updates through idempotent UPSERTs. | 🟢 Complete |
@@ -621,7 +621,7 @@ M4 closeout verification confirmed Docker Compose can run DuckDB, DuckDB can que
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
 | **M5.1** | Deploy Grafana                  | - Grafana is running locally.<br>- Grafana is connected to the PostgreSQL database produced in Milestone 4. | 🟢 Complete |
-| **M5.2** | Visualize session-level metrics | - A Grafana dashboard displays the current active sessions and their corresponding bot scores.<br>- The dashboard refreshes automatically as new events are processed.<br>- Running `python streaming/replay_data.py --start-row 100000 --rows 500 --speed 100x --sink kafka --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 250` demonstrates live updates to session-level bot scores. | 🟢 Complete |
+| **M5.2** | Visualize session-level metrics | - A Grafana dashboard displays the current active sessions and their corresponding bot scores.<br>- The dashboard refreshes automatically as new events are processed.<br>- Running `python streaming/data_replay.py --start-row 100000 --rows 500 --speed 100x --sink kafka --corrupt-probability 0 --delay-probability 0 --quiet --progress-every 250` demonstrates live updates to session-level bot scores. | 🟢 Complete |
 | **M5.3** | Visualize stream-level metrics  | - A Grafana dashboard displays the stream-level metrics described in [Section 2.4.2](#242-stream-level-bot-scoring), including bot rate and score histogram.<br>- Stream-level panels update from the closed 5-minute processing-time windows produced by the operational Flink job. | 🟢 Complete |
 
 M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhost:3000`, the provisioned `Clickstream Postgres` datasource connects to the `clickstream` database, and the `Streaming Bot Detection Live` dashboard is available. Grafana can be accessed locally with username `admin` and password `admin`. After a 500-event replay batch, `session_bot_scores` increased to 135 rows with a latest update timestamp of `2026-07-01 12:25:55.764`; `stream_bot_metrics` remained available with 3 closed-window metric rows.
@@ -633,7 +633,7 @@ M5 closeout verification confirmed Grafana 11.4.0 is running at `http://localhos
 | ID | Task | Acceptance Criteria | Status |
 |---|---|---|---|
 | **M6.1** | Deploy monitoring tools | - Redpanda Console and the Flink Web UI are running locally.<br>- Both tools are accessible from the development environment. | 🟢 Complete |
-| **M6.2** | Monitor Kafka           | - Redpanda Console displays the `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` topics and their active consumer groups.<br>- Consumer lag and message throughput are visible while the replay engine and Flink jobs are running.<br>- Running `python streaming/replay_data.py --rows 100000 --speed 100x` demonstrates the live Kafka metrics updating across raw and clean topics. | 🟢 Complete |
+| **M6.2** | Monitor Kafka           | - Redpanda Console displays the `clickstream-raw`, `clickstream-clean`, and `clickstream-dlq` topics and their active consumer groups.<br>- Consumer lag and message throughput are visible while the replay engine and Flink jobs are running.<br>- Running `python streaming/data_replay.py --rows 100000 --speed 100x` demonstrates the live Kafka metrics updating across raw and clean topics. | 🟢 Complete |
 | **M6.3** | Monitor validation quality | - The validation job exposes valid record count, invalid record count, and DLQ rate through Kafka topic movement, consumer lag, and Flink operator metrics.<br>- Increasing the replay engine corruption probability causes a visible increase in `clickstream-dlq` activity.<br>- DLQ records can be inspected to identify the original payload and validation failure reason. | 🟢 Complete |
 | **M6.4** | Monitor Flink           | - The Flink Web UI displays the running validation, Parquet writer, and operational streaming jobs and their operator graphs.<br>- Operator throughput, checkpoint status, and backpressure metrics are visible while the replay engine is running.<br>- Increasing the replay speed demonstrates changes in throughput and, where applicable, backpressure within the Flink jobs. | 🟢 Complete |
 
@@ -644,10 +644,8 @@ M6 closeout confirmed Redpanda Console is reachable at `http://localhost:8080`, 
 The implementation is organized by responsibility rather than by milestone or programming language. This separation reflects the overall architecture and makes it easier to locate related components as the project grows.
 
 * **`infra/`** contains infrastructure configuration and automation, including Docker Compose files, setup/reset scripts, and Grafana assets.
-* **`streaming/`** contains the executable streaming applications, including the replay engine and the Flink jobs responsible for validation, historical analytics, and operational bot scoring.
-* **`batch/`** contains the offline process used to derive historical reference artifacts from the analytical Parquet dataset. These artifacts are consumed by the operational Flink job during startup.
-* **`sql/`** contains SQL scripts used to initialize supporting databases.
-* **`data/`** stores runtime datasets and generated artifacts, including the source dataset, analytical Parquet output, and Flink checkpoints.
+* **`streaming/`** contains the executable data pipeline assets, including the replay engine, Flink SQL jobs, operational PostgreSQL schema, historical normalization query, and Java bot-scoring job.
+* **`datasets/`** stores runtime datasets and generated artifacts, including the source dataset, analytical Parquet output, historical reference artifacts, and Flink checkpoints.
 * **`docs/`** contains project documentation and architecture diagrams.
 * **`exploration/`** preserves source-discovery experiments that informed the domain decision but are not part of the active clickstream implementation.
 
@@ -686,7 +684,7 @@ project-3-streaming-bot-detection/
 │   │   ├── data_reset.sh
 │   │   ├── infra_reset_all.sh
 │   │   └── state_show.sh
-│   └── grafana/
+│   ├── grafana/
 │       ├── dashboards/
 │       │   └── bot-detection-live.json
 │       └── provisioning/
@@ -694,30 +692,29 @@ project-3-streaming-bot-detection/
 │           │   └── dashboards.yml
 │           └── datasources/
 │               └── postgres.yml
+│   └── flink/
+│       ├── generated/
+│       │   ├── normalization_values.csv
+│       │   └── operational-bot-scoring.jar
+│       ├── lib/
+│       └── m2/
 │
 ├── streaming/
-│   ├── replay_data.py
 │   ├── flink_job_validation.sql
 │   ├── flink_job_analytics.sql
-│   └── normalization_values.csv
-│
-├── batch/
+│   ├── java/
 │   ├── normalization.sql
-│   └── artifacts/
-│       ├── normalization.parquet
-│       └── bot_config.json
+│   ├── postgres_schema.sql
+│   └── data_replay.py
 │
-├── sql/
-│   └── postgres_schema.sql
-│
-├── data/
+├── datasets/
 │   ├── raw/
 │   ├── analytics/
 │   │   └── clickstream/
-│   └── flink/
-│       ├── checkpoints/
-│       ├── generated/
-│       └── lib/
+│   ├── reference/
+│   │   ├── normalization.parquet
+│   │   └── bot_config.json
+│   └── flink-checkpoints/
 │
 ├── exploration/
 │

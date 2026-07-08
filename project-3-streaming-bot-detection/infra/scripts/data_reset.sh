@@ -10,9 +10,9 @@ COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/postgres.yml"
   -f "${PROJECT_DIR}/infra/compose/grafana.yml"
 )
-PARQUET_DIR="${PROJECT_DIR}/data/analytics/clickstream"
-CHECKPOINT_DIR="${PROJECT_DIR}/data/flink/checkpoints"
-OPERATIONAL_JAR="${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar"
+PARQUET_DIR="${PROJECT_DIR}/datasets/analytics/clickstream"
+CHECKPOINT_DIR="${PROJECT_DIR}/datasets/flink-checkpoints"
+OPERATIONAL_JAR="${PROJECT_DIR}/infra/flink/generated/operational-bot-scoring.jar"
 
 cd "${PROJECT_DIR}"
 
@@ -97,24 +97,25 @@ create_topic clickstream-dlq 1 604800000
 
 echo "Removing generated Parquet output..."
 rm -rf "${PARQUET_DIR}"
-mkdir -p "${PROJECT_DIR}/data/analytics"
+mkdir -p "${PROJECT_DIR}/datasets/analytics"
 
 echo "Clearing PostgreSQL operational tables..."
 docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
-  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
+  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/streaming/postgres_schema.sql"
 docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
   psql -U clickstream -d clickstream -c "TRUNCATE TABLE session_bot_scores, stream_bot_metrics;"
 
 echo "Clearing Flink checkpoints..."
 rm -rf "${CHECKPOINT_DIR}"
+rm -rf "${PROJECT_DIR}/datasets/flink"
 mkdir -p "${CHECKPOINT_DIR}"
 
 echo "Resubmitting live platform Flink job listeners..."
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate validation-job
 docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate analytics-job
 
-if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
-  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+if [[ -f "${PROJECT_DIR}/infra/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/datasets/reference/bot_config.json" ]] \
   && [[ -f "${OPERATIONAL_JAR}" ]]; then
   docker compose "${COMPOSE_FILES[@]}" up -d --force-recreate operational-job
 else
@@ -124,8 +125,8 @@ fi
 echo "Waiting for live Flink jobs to be running..."
 wait_for_flink_job m2-clickstream-validation
 wait_for_flink_job m3-clean-clickstream-parquet
-if [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
-  && [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
+if [[ -f "${PROJECT_DIR}/infra/flink/generated/normalization_values.csv" ]] \
+  && [[ -f "${PROJECT_DIR}/datasets/reference/bot_config.json" ]] \
   && [[ -f "${OPERATIONAL_JAR}" ]]; then
   wait_for_flink_job m4-operational-bot-scoring
 fi
@@ -135,14 +136,14 @@ Data reset finished.
 
 Kept:
 - Docker infrastructure containers
-- source CSV in data/source/
-- Flink connector jars in data/flink/lib/
-- M4 reference artifacts in batch/artifacts/
+- source CSV in datasets/source/
+- Flink connector jars in infra/flink/lib/
+- M4 reference artifacts in datasets/reference/
 - Grafana provisioning files
 
 Cleared:
 - Kafka topic contents for clickstream-raw, clickstream-clean, clickstream-dlq
-- Parquet output under data/analytics/clickstream
+- Parquet output under datasets/analytics/clickstream
 - PostgreSQL rows in session_bot_scores and stream_bot_metrics
-- Flink checkpoints under data/flink/checkpoints
+- Flink checkpoints under datasets/flink-checkpoints
 REPORT

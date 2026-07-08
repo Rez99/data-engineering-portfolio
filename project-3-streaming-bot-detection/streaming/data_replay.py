@@ -30,7 +30,7 @@ from urllib.request import urlopen
 
 DEFAULT_SOURCE_URL = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET_PATH = PROJECT_DIR / "data/source/2019-Oct.csv.gz"
+DEFAULT_DATASET_PATH = PROJECT_DIR / "datasets/source/2019-Oct.csv.gz"
 DEFAULT_COMPOSE_FILE = PROJECT_DIR / "infra/compose/kafka.yml"
 DEFAULT_KAFKA_TOPIC = "clickstream-raw"
 DEFAULT_KAFKA_BROKERS = "localhost:9092"
@@ -759,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
         print_config(config, downloaded)
         run_replay(config)
     except (argparse.ArgumentError, RuntimeError, OSError) as error:
-        print(f"replay_data.py failed: {error}", file=sys.stderr)
+        print(f"data_replay.py failed: {error}", file=sys.stderr)
         return 1
     return 0
 

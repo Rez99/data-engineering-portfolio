@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
+ARTIFACT_DIR="${PROJECT_DIR}/datasets/reference"
 COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/kafka.yml"
   -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
@@ -16,7 +16,8 @@ docker compose "${COMPOSE_FILES[@]}" rm -f -v validation-job operational-job pos
 docker volume rm project-3-streaming-bot-detection-m1_postgres-data >/dev/null 2>&1 || true
 rm -f "${ARTIFACT_DIR}/normalization.parquet"
 rm -f "${ARTIFACT_DIR}/bot_config.json"
-rm -rf "${PROJECT_DIR}/data/flink/checkpoints/m4-operational"
-rm -rf "${PROJECT_DIR}/data/flink/generated"
+rm -rf "${PROJECT_DIR}/datasets/flink-checkpoints/m4-operational"
+rm -rf "${PROJECT_DIR}/infra/flink/generated"
+rm -rf "${PROJECT_DIR}/datasets/flink"
 
 echo "Removed M4 Flink/PostgreSQL state and generated artifacts from ${ARTIFACT_DIR}."

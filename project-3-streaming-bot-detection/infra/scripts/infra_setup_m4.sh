@@ -4,13 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
-ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
-SOURCE_CSV="${PROJECT_DIR}/data/source/2019-Oct.csv.gz"
-SOURCE_CSV_DOCKER="/work/data/source/2019-Oct.csv.gz"
-NORMALIZATION_SQL_PATH="${PROJECT_DIR}/batch/normalization.sql"
-GENERATED_FLINK_DIR="${PROJECT_DIR}/data/flink/generated"
+ARTIFACT_DIR="${PROJECT_DIR}/datasets/reference"
+SOURCE_CSV="${PROJECT_DIR}/datasets/source/2019-Oct.csv.gz"
+SOURCE_CSV_DOCKER="/work/datasets/source/2019-Oct.csv.gz"
+NORMALIZATION_SQL_PATH="${PROJECT_DIR}/streaming/normalization.sql"
+GENERATED_FLINK_DIR="${PROJECT_DIR}/infra/flink/generated"
+MAVEN_CACHE_DIR="${PROJECT_DIR}/infra/flink/m2"
 NORMALIZATION_VALUES_CSV="${GENERATED_FLINK_DIR}/normalization_values.csv"
-CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
+CONNECTOR_DIR="${PROJECT_DIR}/infra/flink/lib"
 JAVA_DIR="${PROJECT_DIR}/streaming/java"
 OPERATIONAL_JAR="${GENERATED_FLINK_DIR}/operational-bot-scoring.jar"
 MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-17}"
@@ -88,7 +89,7 @@ build_operational_job() {
 
   docker run --rm \
     -v "${JAVA_DIR}:/work" \
-    -v "${GENERATED_FLINK_DIR}/m2:/root/.m2" \
+    -v "${MAVEN_CACHE_DIR}:/root/.m2" \
     -w /work \
     "${MAVEN_IMAGE}" \
     mvn -q -DskipTests package
@@ -98,7 +99,7 @@ build_operational_job() {
 
   cat <<REPORT
 Operational Flink job built:
-  data/flink/generated/operational-bot-scoring.jar
+  infra/flink/generated/operational-bot-scoring.jar
 REPORT
 }
 
@@ -141,16 +142,16 @@ write_normalization_values_csv() {
         min_click_interval_ms,
         max_click_interval_ms,
         sd_click_interval_ms
-      FROM read_parquet('/work/batch/artifacts/normalization.parquet')
+      FROM read_parquet('/work/datasets/reference/normalization.parquet')
       ORDER BY percentile
       )
-      TO '/work/data/flink/generated/normalization_values.csv'
+      TO '/work/infra/flink/generated/normalization_values.csv'
       (HEADER, DELIMITER ',');
     "
 }
 
 if [[ -f "${ARTIFACT_DIR}/normalization.parquet" && -f "${ARTIFACT_DIR}/bot_config.json" ]]; then
-  echo "M4 reference artifacts already exist; reusing batch/artifacts."
+  echo "M4 reference artifacts already exist; reusing datasets/reference."
   echo "Run ./infra/scripts/infra_reset_m4.sh first if you need to regenerate them."
 else
 source_rows="$(duckdb_scalar "SELECT COUNT(*) FROM events;")"
@@ -175,7 +176,7 @@ fi
 normalization_query="$(<"${NORMALIZATION_SQL_PATH}")"
 duckdb_exec "
   COPY (${normalization_query})
-  TO '/work/batch/artifacts/normalization.parquet'
+  TO '/work/datasets/reference/normalization.parquet'
   (FORMAT PARQUET);
 "
 
@@ -238,20 +239,20 @@ cat > "${ARTIFACT_DIR}/bot_config.json" <<CONFIG
 {
   "bot_score_threshold": 0.95,
   "generated_at_utc": "${generated_at_utc}",
-  "normalization_artifact": "batch/artifacts/normalization.parquet",
+  "normalization_artifact": "datasets/reference/normalization.parquet",
   "session_count": ${session_count},
   "session_inactivity_timeout_ms": ${session_inactivity_timeout_ms},
   "session_inactivity_timeout_source": {
     "metric": "max_click_interval_ms",
     "percentile": 99
   },
-  "source_dataset": "data/source/2019-Oct.csv.gz",
+  "source_dataset": "datasets/source/2019-Oct.csv.gz",
   "source_row_count": ${source_rows}
 }
 CONFIG
 fi
 
-mkdir -p "${CONNECTOR_DIR}" "${PROJECT_DIR}/data/flink/checkpoints/m4-operational"
+mkdir -p "${CONNECTOR_DIR}" "${GENERATED_FLINK_DIR}" "${MAVEN_CACHE_DIR}" "${PROJECT_DIR}/datasets/flink-checkpoints/m4-operational"
 write_normalization_values_csv
 download_if_missing "${KAFKA_CONNECTOR_URL}" "${KAFKA_CONNECTOR_JAR}"
 download_if_missing "${PARQUET_CONNECTOR_URL}" "${PARQUET_CONNECTOR_JAR}"
@@ -281,7 +282,7 @@ fi
 wait_for_flink_job m2-clickstream-validation "Run ./infra/scripts/infra_setup_m2.sh first."
 
 docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T postgres \
-  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/sql/postgres_schema.sql"
+  psql -U clickstream -d clickstream -f /dev/stdin < "${PROJECT_DIR}/streaming/postgres_schema.sql"
 
 if ! flink_job_running m4-operational-bot-scoring; then
   docker compose "${STREAMING_COMPOSE_FILES[@]}" up -d --force-recreate operational-job
@@ -291,7 +292,7 @@ wait_for_flink_job m4-operational-bot-scoring "Check operational-job logs for su
 echo
 echo "M4 operational pipeline is starting."
 echo "DuckDB is available through Docker Compose: infra/compose/duckdb.yml"
-echo "Artifacts: batch/artifacts/normalization.parquet and batch/artifacts/bot_config.json"
+echo "Artifacts: datasets/reference/normalization.parquet and datasets/reference/bot_config.json"
 echo "PostgreSQL: localhost:5432 database=clickstream user=clickstream password=clickstream"
 echo "Flink UI: http://localhost:8081"
 echo "Redpanda Console: http://localhost:8080"

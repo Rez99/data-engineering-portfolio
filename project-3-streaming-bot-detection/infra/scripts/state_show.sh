@@ -93,16 +93,16 @@ platform_ready() {
     return 1
   fi
 
-  if [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
-    && [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
-    && [[ ! -f "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" ]]; then
-    add_detail "M4 artifacts exist, but data/flink/generated/operational-bot-scoring.jar is missing."
+  if [[ -f "${PROJECT_DIR}/datasets/reference/bot_config.json" ]] \
+    && [[ -f "${PROJECT_DIR}/infra/flink/generated/normalization_values.csv" ]] \
+    && [[ ! -f "${PROJECT_DIR}/infra/flink/generated/operational-bot-scoring.jar" ]]; then
+    add_detail "M4 artifacts exist, but infra/flink/generated/operational-bot-scoring.jar is missing."
     return 1
   fi
 
-  if [[ -f "${PROJECT_DIR}/batch/artifacts/bot_config.json" ]] \
-    && [[ -f "${PROJECT_DIR}/data/flink/generated/normalization_values.csv" ]] \
-    && [[ -f "${PROJECT_DIR}/data/flink/generated/operational-bot-scoring.jar" ]] \
+  if [[ -f "${PROJECT_DIR}/datasets/reference/bot_config.json" ]] \
+    && [[ -f "${PROJECT_DIR}/infra/flink/generated/normalization_values.csv" ]] \
+    && [[ -f "${PROJECT_DIR}/infra/flink/generated/operational-bot-scoring.jar" ]] \
     && ! grep -q 'm4-operational-bot-scoring' <<<"${jobs}"; then
     add_detail "M4 artifacts exist, but m4-operational-bot-scoring is not running."
     return 1
@@ -170,7 +170,7 @@ REPORT
 State: Platform Ready
 
 Next valid action:
-  python3 streaming/replay_data.py --start-row 100000 --rows 1000000 --speed 100x --sink kafka --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 100000
+  python3 streaming/data_replay.py --start-row 100000 --rows 1000000 --speed 100x --sink kafka --corrupt-probability 0.02 --delay-probability 0.02 --quiet --progress-every 100000
 
 Other valid action:
   ./infra/scripts/infra_reset_all.sh

@@ -19,9 +19,8 @@ services:
         parallelism.default: 2
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
+      - ../../infra/flink/lib:/opt/flink/usrlib:ro
+      - ../../datasets:/opt/flink/datasets
 
   taskmanager:
     image: apache/flink:1.19.1-scala_2.12-java17
@@ -38,9 +37,8 @@ services:
         taskmanager.numberOfTaskSlots: 12
         parallelism.default: 2
     volumes:
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
+      - ../../infra/flink/lib:/opt/flink/usrlib:ro
+      - ../../datasets:/opt/flink/datasets
 
   validation-job:
     image: apache/flink:1.19.1-scala_2.12-java17
@@ -65,9 +63,8 @@ services:
         rest.address: jobmanager
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
+      - ../../infra/flink/lib:/opt/flink/usrlib:ro
+      - ../../datasets:/opt/flink/datasets
     restart: "no"
 
   analytics-job:
@@ -93,9 +90,8 @@ services:
         rest.address: jobmanager
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
+      - ../../infra/flink/lib:/opt/flink/usrlib:ro
+      - ../../datasets:/opt/flink/datasets
     restart: "no"
 
   operational-job:
@@ -111,7 +107,7 @@ services:
       - bash
       - -lc
       - |
-        JAR=/opt/flink/data/flink/generated/operational-bot-scoring.jar
+        JAR=/opt/flink/generated/operational-bot-scoring.jar
         if [[ ! -f "$${JAR}" ]]; then
           echo "Missing $${JAR}. Run ./infra/scripts/infra_setup_m4.sh first." >&2
           exit 1
@@ -123,16 +119,15 @@ services:
           -C file:///opt/flink/usrlib/flink-connector-jdbc-3.2.0-1.19.jar \
           -C file:///opt/flink/usrlib/postgresql-42.7.3.jar \
           "$${JAR}" \
-          --bot-config /opt/flink/batch/artifacts/bot_config.json \
-          --normalization-values /opt/flink/data/flink/generated/normalization_values.csv \
+          --bot-config /opt/flink/datasets/reference/bot_config.json \
+          --normalization-values /opt/flink/generated/normalization_values.csv \
           --parallelism 2
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         rest.address: jobmanager
     volumes:
-      - ../../streaming:/opt/flink/jobs:ro
-      - ../../batch:/opt/flink/batch:ro
-      - ../../data/flink/lib:/opt/flink/usrlib:ro
-      - ../../data:/opt/flink/data
+      - ../../infra/flink/generated:/opt/flink/generated:ro
+      - ../../infra/flink/lib:/opt/flink/usrlib:ro
+      - ../../datasets:/opt/flink/datasets
     restart: "no"

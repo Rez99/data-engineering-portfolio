@@ -7,7 +7,7 @@ SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
 SET 'execution.checkpointing.timeout' = '300s';
 SET 'execution.checkpointing.min-pause' = '5s';
 SET 'execution.checkpointing.externalized-checkpoint-retention' = 'RETAIN_ON_CANCELLATION';
-SET 'state.checkpoints.dir' = 'file:///opt/flink/data/flink/checkpoints/m2-validation';
+SET 'state.checkpoints.dir' = 'file:///opt/flink/datasets/flink-checkpoints/m2-validation';
 
 SET 'restart-strategy.type' = 'fixed-delay';
 SET 'restart-strategy.fixed-delay.attempts' = '10';

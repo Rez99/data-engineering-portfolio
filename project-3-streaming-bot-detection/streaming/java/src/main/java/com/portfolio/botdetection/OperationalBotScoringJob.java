@@ -46,9 +46,9 @@ public class OperationalBotScoringJob {
     private static final String DEFAULT_JDBC_URL = "jdbc:postgresql://postgres:5432/clickstream";
     private static final String DEFAULT_JDBC_USER = "clickstream";
     private static final String DEFAULT_JDBC_PASSWORD = "clickstream";
-    private static final String DEFAULT_BOT_CONFIG_PATH = "/opt/flink/batch/artifacts/bot_config.json";
+    private static final String DEFAULT_BOT_CONFIG_PATH = "/opt/flink/datasets/reference/bot_config.json";
     private static final String DEFAULT_NORMALIZATION_VALUES_PATH =
-            "/opt/flink/data/flink/generated/normalization_values.csv";
+            "/opt/flink/generated/normalization_values.csv";
 
     public static void main(String[] args) throws Exception {
         JobConfig config = JobConfig.fromArgs(args);
@@ -60,7 +60,7 @@ public class OperationalBotScoringJob {
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
         env.getCheckpointConfig().setCheckpointTimeout(300_000L);
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(5_000L);
-        env.getCheckpointConfig().setCheckpointStorage("file:///opt/flink/data/flink/checkpoints/m4-operational");
+        env.getCheckpointConfig().setCheckpointStorage("file:///opt/flink/datasets/flink-checkpoints/m4-operational");
         env.getCheckpointConfig().setExternalizedCheckpointCleanup(
                 CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
 

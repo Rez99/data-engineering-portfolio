@@ -15,23 +15,24 @@ cd "${PROJECT_DIR}"
 
 docker compose "${COMPOSE_FILES[@]}" down --volumes --remove-orphans
 
-rm -rf "${PROJECT_DIR}/data/analytics/clickstream"
-rm -rf "${PROJECT_DIR}/data/flink/checkpoints"
-rm -rf "${PROJECT_DIR}/data/flink/generated"
-rm -f "${PROJECT_DIR}/batch/artifacts/normalization.parquet"
-rm -f "${PROJECT_DIR}/batch/artifacts/bot_config.json"
+rm -rf "${PROJECT_DIR}/datasets/analytics/clickstream"
+rm -rf "${PROJECT_DIR}/datasets/flink-checkpoints"
+rm -rf "${PROJECT_DIR}/datasets/flink"
+rm -rf "${PROJECT_DIR}/infra/flink/generated"
+rm -f "${PROJECT_DIR}/datasets/reference/normalization.parquet"
+rm -f "${PROJECT_DIR}/datasets/reference/bot_config.json"
 
 cat <<REPORT
 Complete platform reset finished.
 
 Removed:
 - Docker containers and volumes for Kafka/Redpanda, Flink, PostgreSQL, Grafana, and Redpanda Console
-- generated Parquet output under data/analytics/clickstream
+- generated Parquet output under datasets/analytics/clickstream
 - Flink checkpoints and generated Flink SQL
-- M4 generated reference artifacts in batch/artifacts
+- M4 generated reference artifacts in datasets/reference
 
 Kept:
-- source CSV in data/source/
-- Flink connector jars in data/flink/lib/
+- source CSV in datasets/source/
+- Flink connector jars in infra/flink/lib/
 - source code, SQL, Compose files, and Grafana provisioning files
 REPORT

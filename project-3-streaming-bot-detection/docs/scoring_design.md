@@ -203,10 +203,10 @@ The SQL job was useful for an earlier milestone because it demonstrated the scor
 The DataStream job uses these generated/runtime artifacts:
 
 ```text
-batch/artifacts/bot_config.json
-batch/artifacts/normalization.parquet
-data/flink/generated/normalization_values.csv
-data/flink/generated/operational-bot-scoring.jar
+datasets/reference/bot_config.json
+datasets/reference/normalization.parquet
+infra/flink/generated/normalization_values.csv
+infra/flink/generated/operational-bot-scoring.jar
 ```
 
 The jar is built during M4 setup:

@@ -7,3 +7,11 @@
 __pycache__/
 .venv/
 data/
+datasets/
+!datasets/
+datasets/*
+!datasets/reference/
+!datasets/reference/**
+infra/flink/generated/
+infra/flink/lib/
+infra/flink/m2/

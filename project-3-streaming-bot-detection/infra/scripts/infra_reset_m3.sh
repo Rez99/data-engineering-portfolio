@@ -11,6 +11,6 @@ COMPOSE_FILES=(
 )
 
 docker compose "${COMPOSE_FILES[@]}" down --volumes --remove-orphans
-rm -rf "${PROJECT_DIR}/data/analytics/clickstream"
+rm -rf "${PROJECT_DIR}/datasets/analytics/clickstream"
 
 echo "M3 broker, console, Flink, and generated broker state removed."
