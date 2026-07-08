@@ -33,7 +33,6 @@
             "mode": "thresholds"
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -283,7 +282,6 @@
             }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -330,8 +328,19 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT window_end AS time, bot_rate FROM stream_bot_metrics ORDER BY window_end;",
+          "rawSql": "WITH bounds AS (SELECT date_bin('5 minutes', $__timeFrom()::timestamp, timestamp '1970-01-01') AS start_time, date_bin('5 minutes', $__timeTo()::timestamp, timestamp '1970-01-01') AS end_time), buckets AS (SELECT generate_series(start_time, end_time, interval '5 minutes') AS time FROM bounds), metrics AS (SELECT date_bin('5 minutes', window_end, timestamp '1970-01-01') AS time, AVG(bot_rate) AS bot_rate FROM stream_bot_metrics WHERE $__timeFilter(window_end) GROUP BY 1) SELECT buckets.time, COALESCE(metrics.bot_rate, 0.0) AS \"Bot rate\" FROM buckets LEFT JOIN metrics USING (time) ORDER BY buckets.time;",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "clickstream-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT date_bin('5 minutes', $__timeFrom()::timestamp, timestamp '1970-01-01') AS start_time, date_bin('5 minutes', $__timeTo()::timestamp, timestamp '1970-01-01') AS end_time), buckets AS (SELECT generate_series(start_time, end_time, interval '5 minutes') AS time FROM bounds), metrics AS (SELECT date_bin('5 minutes', window_end, timestamp '1970-01-01') AS time, AVG(bot_rate) AS bot_rate FROM stream_bot_metrics WHERE $__timeFilter(window_end) GROUP BY 1), filled AS (SELECT buckets.time, COALESCE(metrics.bot_rate, 0.0) AS bot_rate FROM buckets LEFT JOIN metrics USING (time)) SELECT time, AVG(bot_rate) OVER (ORDER BY time ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS \"Bot rate 10-window MA\" FROM filled ORDER BY time;",
+          "refId": "B"
         }
       ],
       "title": "Bot Rate Over Time",

@@ -333,7 +333,11 @@ The same validated event stream supports both analytical and operational workloa
 Schema validation separates malformed events into a Dead Letter Queue before downstream processing. Replay and Flink checkpointing allow deterministic testing and recovery following failures.
 
 **Capabilities**
-
+python3 streaming/data_replay.py \
+    --sink kafka \
+    --speed 100000x \
+    --quiet \
+    --progress-every 5000000
 - Schema validation: malformed or incomplete clickstream records are rejected before they can corrupt analytical datasets or bot-scoring state.
 - Dead Letter Queue: invalid events are preserved in a separate Kafka topic so failures can be inspected without blocking valid traffic.
 - Replay: the replay engine can rerun the same source data at configurable speeds, making behavior reproducible during development and testing.
@@ -465,6 +469,17 @@ python3 streaming/data_replay.py \
 ```
 
 The replay engine turns historical clickstream rows into a live Kafka event stream. After replay begins, the platform moves from `Platform Ready` to `Data Present`.
+
+For a quicker development run, replay the 1% sample CSV instead of the full October dataset:
+
+```bash
+python3 streaming/data_replay.py \
+    --dataset-path datasets/source/2019-Oct-sessions-1pct.csv.gz \
+    --sink kafka \
+    --speed 100000x \
+    --quiet \
+    --progress-every 100000
+```
 
 ### Replay Parameters
 
