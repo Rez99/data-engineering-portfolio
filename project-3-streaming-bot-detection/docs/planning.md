@@ -336,7 +336,7 @@ The operational pipeline consumes only `clickstream-clean`. It can therefore foc
 ### 2.4.1 Session-level bot scoring
 Recomputed on every new event using all events seen
 for that session so far. Score accumulates confidence as the session grows.
-Sessions scoring above 0.7 are classified as bots.
+Sessions scoring above 0.95 are classified as bots.
 
 - `mean_click_interval_ms` — low values indicate bot-like activity
 - `min_click_interval_ms` — bots can click faster than humans are physically capable of
@@ -354,7 +354,7 @@ percentile_rank(1 / sd_click_interval_ms)
 ### 2.4.2 Stream-level bot scoring
 Computed continuously across all sessions in 5-min tumbling windows.
 
-- Bot rate % — share of sessions scoring above 0.7 in the window
+- Bot rate % — share of sessions scoring above 0.95 in the window
 - Score histogram — distribution of bot scores across sessions in the window
 
 ### 2.4.3 Historical normalization lookup table

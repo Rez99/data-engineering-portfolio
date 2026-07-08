@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 ARTIFACT_DIR="${PROJECT_DIR}/batch/artifacts"
 SOURCE_CSV="${PROJECT_DIR}/data/source/2019-Oct.csv.gz"
 SOURCE_CSV_DOCKER="/work/data/source/2019-Oct.csv.gz"
@@ -47,8 +48,9 @@ download_if_missing() {
 require_topic() {
   local topic="$1"
 
-  if ! docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
+  if ! docker_check_or_explain "M4 setup failed while checking Kafka topic ${topic}" \
+    docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T redpanda \
+      rpk topic describe "${topic}" --brokers localhost:9092; then
     echo "M4 setup failed: Kafka topic is missing: ${topic}" >&2
     echo "Run ./infra/scripts/infra_setup_m1.sh first." >&2
     exit 1
@@ -60,8 +62,9 @@ wait_for_flink_job() {
   local setup_hint="$2"
 
   for _ in {1..30}; do
-    if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
-      /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"; then
+    if docker_output_or_explain "M4 setup failed while waiting for Flink job ${job_name}" \
+      docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
+        /opt/flink/bin/flink list -r | grep -q "${job_name}"; then
       return
     fi
     sleep 2
@@ -75,8 +78,9 @@ wait_for_flink_job() {
 flink_job_running() {
   local job_name="$1"
 
-  docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
-    /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"
+  docker_output_or_explain "M4 setup failed while listing Flink jobs" \
+    docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r | grep -q "${job_name}"
 }
 
 build_operational_job() {
@@ -232,7 +236,7 @@ generated_at_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 cat > "${ARTIFACT_DIR}/bot_config.json" <<CONFIG
 {
-  "bot_score_threshold": 0.7,
+  "bot_score_threshold": 0.95,
   "generated_at_utc": "${generated_at_utc}",
   "normalization_artifact": "batch/artifacts/normalization.parquet",
   "session_count": ${session_count},

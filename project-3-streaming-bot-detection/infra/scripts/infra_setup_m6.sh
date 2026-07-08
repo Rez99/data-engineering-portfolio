@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/kafka.yml"
   -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
@@ -14,8 +15,9 @@ COMPOSE_FILES=(
 cd "${PROJECT_DIR}"
 
 flink_running_jobs() {
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
-    /opt/flink/bin/flink list -r 2>/dev/null || true
+  docker_output_or_explain "M6 setup failed while listing Flink jobs" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r || true
 }
 
 wait_for_flink_job() {

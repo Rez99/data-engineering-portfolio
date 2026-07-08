@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/postgres.yml"
   -f "${PROJECT_DIR}/infra/compose/grafana.yml"
@@ -33,8 +34,10 @@ metric_rows="$(docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
   psql -U clickstream -d clickstream -At -c "SELECT COUNT(*) FROM stream_bot_metrics;" | tr -d '\r')"
 
 operational_job_status="not checked"
-if docker compose "${STREAMING_COMPOSE_FILES[@]}" ps -q jobmanager >/dev/null 2>&1; then
-  if docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flink list -r 2>/dev/null \
+if [[ -n "$(docker_output_or_explain "M5 setup failed while checking the Flink JobManager service" \
+  docker compose "${STREAMING_COMPOSE_FILES[@]}" ps -q jobmanager)" ]]; then
+  if docker_output_or_explain "M5 setup failed while listing Flink jobs" \
+    docker compose "${STREAMING_COMPOSE_FILES[@]}" exec -T jobmanager /opt/flink/bin/flink list -r \
     | grep -q 'm4-operational-bot-scoring'; then
     operational_job_status="running"
   else

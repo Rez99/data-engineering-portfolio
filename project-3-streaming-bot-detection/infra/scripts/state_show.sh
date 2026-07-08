@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 COMPOSE_FILES=(
   -f "${PROJECT_DIR}/infra/compose/kafka.yml"
   -f "${PROJECT_DIR}/infra/compose/kafka-ui.yml"
@@ -21,13 +22,15 @@ add_detail() {
 
 running_container() {
   local service="$1"
-  docker compose "${COMPOSE_FILES[@]}" ps --status running -q "${service}" 2>/dev/null
+  docker_output_or_explain "State check failed while checking service ${service}" \
+    docker compose "${COMPOSE_FILES[@]}" ps --status running -q "${service}"
 }
 
 topic_exists() {
   local topic="$1"
-  docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1
+  docker_check_or_explain "State check failed while checking Kafka topic ${topic}" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
+      rpk topic describe "${topic}" --brokers localhost:9092
 }
 
 topic_has_records() {
@@ -35,23 +38,26 @@ topic_has_records() {
   local count
 
   count="$(
-    docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
-      bash -lc "timeout 3 rpk topic consume ${topic} --brokers localhost:9092 --offset start --num 1 --format '%v\\n' | wc -l" \
-      2>/dev/null | tr -d '[:space:]'
+    docker_output_or_explain "State check failed while reading Kafka topic ${topic}" \
+      docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
+        bash -lc "timeout 3 rpk topic consume ${topic} --brokers localhost:9092 --offset start --num 1 --format '%v\\n' | wc -l" \
+      | tr -d '[:space:]'
   )"
 
   [[ "${count:-0}" -gt 0 ]]
 }
 
 flink_running_jobs() {
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
-    /opt/flink/bin/flink list -r 2>/dev/null || true
+  docker_output_or_explain "State check failed while listing Flink jobs" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r || true
 }
 
 postgres_scalar() {
   local sql="$1"
-  docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
-    psql -U clickstream -d clickstream -At -c "${sql}" 2>/dev/null | tr -d '\r'
+  docker_output_or_explain "State check failed while querying PostgreSQL" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T postgres \
+      psql -U clickstream -d clickstream -At -c "${sql}" | tr -d '\r'
 }
 
 platform_ready() {

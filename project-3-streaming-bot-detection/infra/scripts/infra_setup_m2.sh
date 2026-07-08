@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 CONNECTOR_DIR="${PROJECT_DIR}/data/flink/lib"
 KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
 KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
@@ -16,8 +17,9 @@ COMPOSE_FILES=(
 require_topic() {
   local topic="$1"
 
-  if ! docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
-    rpk topic describe "${topic}" --brokers localhost:9092 >/dev/null 2>&1; then
+  if ! docker_check_or_explain "M2 setup failed while checking Kafka topic ${topic}" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T redpanda \
+      rpk topic describe "${topic}" --brokers localhost:9092; then
     echo "M2 setup failed: Kafka topic is missing: ${topic}" >&2
     echo "Run ./infra/scripts/infra_setup_m1.sh first." >&2
     exit 1
@@ -27,16 +29,18 @@ require_topic() {
 flink_job_running() {
   local job_name="$1"
 
-  docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
-    /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"
+  docker_output_or_explain "M2 setup failed while listing Flink jobs" \
+    docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+      /opt/flink/bin/flink list -r | grep -q "${job_name}"
 }
 
 wait_for_flink_job() {
   local job_name="$1"
 
   for _ in {1..30}; do
-    if docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
-      /opt/flink/bin/flink list -r 2>/dev/null | grep -q "${job_name}"; then
+    if docker_output_or_explain "M2 setup failed while waiting for Flink job ${job_name}" \
+      docker compose "${COMPOSE_FILES[@]}" exec -T jobmanager \
+        /opt/flink/bin/flink list -r | grep -q "${job_name}"; then
       return
     fi
     sleep 2

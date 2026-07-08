@@ -7,7 +7,7 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 | Section | Contents |
 | ------- | -------- |
 | **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
-| **[2. Follow One Session](#2-follow-one-deployment)** | 2.1 Infrastructure Provisioning<br>2.2 Platform Initialization<br>2.3 Pipeline Execution<br>2.4 Dashboard Publication |
+| **[2. Follow One Session](#2-follow-one-session)** | 2.1 Inspect the Original Clickstream<br>2.2 Watch the Bot Score Evolve<br>2.3 View the Final Session State<br>2.4 Explain the Final Score |
 
 # 1. What This Project Does
 ## 1.1 Problem Statement
@@ -147,91 +147,140 @@ flowchart TD
 `*` Iceberg integration demonstrated in Projects 1 & 2.
 
 # 2. Follow One Session
-## 2.1 Find a candidate bot session
-```bash
-docker compose -f infra/compose/postgres.yml exec postgres \
-  psql -U clickstream -d clickstream
-```  
-```sql
-\x
-SELECT
-    *
-FROM session_bot_scores
-WHERE 1=1
-      AND is_bot IS TRUE 
-      AND bot_score BETWEEN 0.75 AND 0.76 
-      AND event_count = 10
-ORDER BY event_count DESC
-LIMIT 1;
-```
-```text
--[ RECORD 1 ]----------+-------------------------------------
-user_session           | 244448ee-2162-4f2f-af77-fc9210bbd6e4
-last_event_time        | 2019-10-17 15:10:05
-closed_at              | 2019-10-17 16:37:05
-updated_at             | 2026-07-08 02:13:03.443
-session_status         | closed
-event_count            | 10
-interval_count         | 9
-mean_click_interval_ms | 31556
-min_click_interval_ms  | 7000
-sd_click_interval_ms   | 23287
-bot_score              | 0.75
-is_bot                 | t
-```
-```text
-bot_score 
-      = 1 - mean(
-                  percentile_rank(mean_interval_ms),
-                  percentile_rank(min_click_interval_ms),
-                  percentile_rank(sd_click_interval_ms)
-            )
-      
-      = 1 - mean(26%, 15%, 33%)
 
-      = 75%
+To illustrate how the streaming platform operates, this section follows a single clickstream session from its original events through to its final bot classification.
+
+The session used throughout is:
+
+```text
+d1f516da-7272-461a-bf97-05f9d06a8187
 ```
-## 2.2 Inspect session
- ```bash
+
+---
+
+## 2.1 Inspect the Original Clickstream
+
+The original clickstream events can be queried directly from the source dataset.
+
+```bash
 docker compose -f infra/compose/duckdb.yml run --rm duckdb
 ```
+
 ```sql
-    SELECT
-        event_time,
-        event_type,
-        brand,
-        datediff(
-            'millisecond',
-            LAG(event_time) OVER (
-                PARTITION BY user_session
-                ORDER BY event_time
-            ),
-            event_time
-        ) AS interval_ms
-    FROM read_csv_auto('/work/data/source/2019-Oct.csv.gz')
-    WHERE user_session = '244448ee-2162-4f2f-af77-fc9210bbd6e4';
+SELECT
+    event_time,
+    event_type,
+    brand,
+    datediff(
+        'millisecond',
+        LAG(event_time) OVER (
+            PARTITION BY user_session
+            ORDER BY event_time
+        ),
+        event_time
+    ) AS interval_ms
+FROM read_csv_auto('/work/data/source/2019-Oct.csv.gz')
+WHERE user_session = 'd1f516da-7272-461a-bf97-05f9d06a8187';
 ```
+
 ```text
 ┌─────────────────────┬────────────┬─────────┬─────────────┐
 │     event_time      │ event_type │  brand  │ interval_ms │
 │      timestamp      │  varchar   │ varchar │    int64    │
 ├─────────────────────┼────────────┼─────────┼─────────────┤
-│ 2019-10-17 15:05:21 │ view       │ sony    │        NULL │
-│ 2019-10-17 15:05:59 │ view       │ sony    │       38000 │
-│ 2019-10-17 15:07:17 │ view       │ apple   │       78000 │
-│ 2019-10-17 15:07:53 │ view       │ nillkin │       36000 │
-│ 2019-10-17 15:08:00 │ view       │ nillkin │        7000 │
-│ 2019-10-17 15:08:23 │ view       │ nillkin │       23000 │
-│ 2019-10-17 15:09:12 │ view       │ apple   │       49000 │
-│ 2019-10-17 15:09:49 │ view       │ samsung │       37000 │
-│ 2019-10-17 15:09:57 │ view       │ nillkin │        8000 │
-│ 2019-10-17 15:10:05 │ view       │ samsung │        8000 │
+│ 2019-10-18 20:14:09 │ view       │ oppo    │        NULL │
+│ 2019-10-18 20:14:16 │ view       │ oppo    │        7000 │
+│ 2019-10-18 20:14:23 │ view       │ oppo    │        7000 │
+│ 2019-10-18 20:14:29 │ view       │ oppo    │        6000 │
+│ 2019-10-18 20:14:32 │ view       │ oppo    │        3000 │
+│ 2019-10-18 20:14:36 │ view       │ oppo    │        4000 │
+│ 2019-10-18 20:14:47 │ view       │ oppo    │       11000 │
+│ 2019-10-18 20:14:49 │ view       │ oppo    │        2000 │
+│ 2019-10-18 20:14:54 │ view       │ oppo    │        5000 │
+│ 2019-10-18 20:14:58 │ view       │ oppo    │        4000 │
+└─────────────────────┴────────────┴─────────┴─────────────┘
 ```
+
+As these events are replayed into Kafka, the operational pipeline maintains state for this session. After every new event, the session statistics are updated and a new bot score is calculated.
+
+---
+
+## 2.2 Watch the Bot Score Evolve
+
+The bot score changes continuously as additional click intervals become available.
+
 ```mermaid
 xychart-beta
     title "Session Bot Score"
-    x-axis "Event sequence" [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    y-axis "Score" 0 --> 1
-    line [0.00, 0.45, 0.427, 0.478, 0.682, 0.709, 0.711, 0.722, 0.734, 0.746]
-    line [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]
+    x-axis "Event sequence" [1,2,3,4,5,6,7,8,9,10]
+    y-axis "Bot Score" 0 --> 1
+    line [0.0,0.0,0.94,0.95,0.98,0.98,0.9733333333333334,0.9833333333333333,0.9833333333333333,0.9833333333333333]
+    line [0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95]
 ```
+
+After only four events the session exceeds the operational bot threshold (0.95). From this point onward the session could be flagged in real time while it is still active, allowing downstream systems to react immediately rather than waiting for historical batch processing.
+
+After ~90 minutes of inactivity (corresponding to the 99th percentile of historical maximum session click intervals), the session is closed and its final statistics are written to PostgreSQL.
+
+---
+
+## 2.3 View the Final Session State
+
+```bash
+docker compose -f infra/compose/postgres.yml exec postgres \
+  psql -U clickstream -d clickstream
+```
+
+```sql
+\x
+
+SELECT *
+FROM session_bot_scores
+WHERE user_session = 'd1f516da-7272-461a-bf97-05f9d06a8187';
+```
+
+```text
+-[ RECORD 1 ]----------+-------------------------------------
+user_session           | d1f516da-7272-461a-bf97-05f9d06a8187
+last_event_time        | 2019-10-18 20:14:58
+closed_at              | 2019-10-18 21:41:58
+updated_at             | 2026-07-08 16:36:54.648
+session_status         | closed
+event_count            | 10
+interval_count         | 9
+mean_click_interval_ms | 5444
+min_click_interval_ms  | 2000
+sd_click_interval_ms   | 2698
+bot_score              | 0.9833
+is_bot                 | t
+```
+
+The operational pipeline stores only the running statistics required for scoring rather than every individual click event. This allows each session to be updated efficiently as new events arrive while keeping the amount of maintained state small.
+
+---
+
+## 2.4 Explain the Final Score
+
+The bot score is computed from three behavioral features:
+
+- Mean click interval
+- Minimum click interval
+- Standard deviation of click intervals
+
+Each feature is converted into its percentile rank relative to all historical sessions before being combined into a single score.
+
+```text
+bot_score
+      = 1 - mean(
+            percentile_rank(mean_click_interval_ms),
+            percentile_rank(min_click_interval_ms),
+            percentile_rank(sd_click_interval_ms)
+        )
+
+      = 1 - mean(0%, 3%, 2%)
+
+      = 98%
+```
+
+This session exhibits consistently short click intervals with very little variation, placing it among the most uniform sessions in the dataset. As a result, its final bot score is **98%**, exceeding the operational threshold of **95%** and causing the session to be classified as a bot.
+python3 streaming/replay_data.py --dataset-path data/source/2019-Oct-sessions-1pct.csv.gz --sink kafka --speed 100000x --quiet --progress-every 5000000
