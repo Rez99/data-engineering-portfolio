@@ -164,10 +164,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="Prepare the October 2019 clickstream dataset for replay.",
     )
     parser.add_argument(
+        "csv_file",
+        type=Path,
+        nargs="?",
+        default=None,
+        help=f"Optional source CSV or CSV.GZ file. Default: {DEFAULT_DATASET_PATH}",
+    )
+    parser.add_argument(
         "--dataset-path",
         type=Path,
-        default=DEFAULT_DATASET_PATH,
-        help=f"Local source CSV path. Default: {DEFAULT_DATASET_PATH}",
+        default=None,
+        help=(
+            "Local source CSV path. Kept for compatibility; overrides the "
+            f"optional csv_file argument. Default: {DEFAULT_DATASET_PATH}"
+        ),
     )
     parser.add_argument(
         "--source-url",
@@ -272,8 +282,9 @@ def build_parser() -> argparse.ArgumentParser:
 def load_config(argv: list[str] | None = None) -> ReplayConfig:
     """Parse and validate command-line arguments."""
     args = build_parser().parse_args(argv)
+    dataset_path = args.dataset_path or args.csv_file or DEFAULT_DATASET_PATH
     return ReplayConfig(
-        dataset_path=args.dataset_path,
+        dataset_path=dataset_path,
         source_url=args.source_url,
         speed=args.speed,
         start_row=args.start_row,
@@ -308,6 +319,12 @@ def download_dataset(source_url: str, dataset_path: Path) -> bool:
     if dataset_path.exists():
         print(f"Dataset already present; skipping download: {dataset_path}")
         return False
+
+    if source_url == DEFAULT_SOURCE_URL and dataset_path != DEFAULT_DATASET_PATH:
+        raise RuntimeError(
+            f"Custom dataset path does not exist: {dataset_path}. "
+            "Create the file or pass --source-url to download it."
+        )
 
     dataset_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading dataset from {source_name(source_url)}")

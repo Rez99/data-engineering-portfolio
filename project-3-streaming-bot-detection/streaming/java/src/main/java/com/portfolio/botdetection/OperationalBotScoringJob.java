@@ -31,6 +31,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -328,6 +330,7 @@ public class OperationalBotScoringJob {
         public Double minClickIntervalMs;
         public double botScore;
         public long closeTimerMillis;
+        public ArrayList<Long> eventTimeMillis;
 
         public SessionState() {
         }
@@ -338,18 +341,39 @@ public class OperationalBotScoringJob {
             state.firstEventTimeMillis = eventTimeMillis;
             state.lastEventTimeMillis = eventTimeMillis;
             state.eventCount = 1L;
+            state.eventTimeMillis = new ArrayList<>();
+            state.eventTimeMillis.add(eventTimeMillis);
             return state;
         }
 
         void addEvent(long eventTimeMillis) {
-            eventCount++;
-            if (eventTimeMillis >= lastEventTimeMillis) {
-                double interval = eventTimeMillis - lastEventTimeMillis;
-                intervalCount++;
+            if (this.eventTimeMillis == null) {
+                this.eventTimeMillis = new ArrayList<>();
+                this.eventTimeMillis.add(lastEventTimeMillis);
+            }
+
+            int insertionPoint = Collections.binarySearch(this.eventTimeMillis, eventTimeMillis);
+            if (insertionPoint < 0) {
+                insertionPoint = -insertionPoint - 1;
+            }
+            this.eventTimeMillis.add(insertionPoint, eventTimeMillis);
+            recomputeIntervalStats();
+        }
+
+        void recomputeIntervalStats() {
+            eventCount = eventTimeMillis.size();
+            firstEventTimeMillis = eventTimeMillis.get(0);
+            lastEventTimeMillis = eventTimeMillis.get(eventTimeMillis.size() - 1);
+            intervalCount = Math.max(0, eventCount - 1);
+            intervalSumMs = 0.0;
+            intervalSumSquaresMs = 0.0;
+            minClickIntervalMs = null;
+
+            for (int i = 1; i < eventTimeMillis.size(); i++) {
+                double interval = eventTimeMillis.get(i) - eventTimeMillis.get(i - 1);
                 intervalSumMs += interval;
                 intervalSumSquaresMs += interval * interval;
                 minClickIntervalMs = minClickIntervalMs == null ? interval : Math.min(minClickIntervalMs, interval);
-                lastEventTimeMillis = eventTimeMillis;
             }
         }
 
@@ -358,11 +382,12 @@ public class OperationalBotScoringJob {
         }
 
         Double sdClickIntervalMs() {
-            if (intervalCount == 0) {
+            if (intervalCount < 2) {
                 return null;
             }
             double mean = intervalSumMs / intervalCount;
-            double variance = Math.max(0.0, (intervalSumSquaresMs / intervalCount) - (mean * mean));
+            double variance = Math.max(0.0,
+                    (intervalSumSquaresMs - intervalCount * mean * mean) / (intervalCount - 1));
             return Math.sqrt(variance);
         }
 
