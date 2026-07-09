@@ -1,7 +1,8 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm3-clean-clickstream-parquet';
 SET 'parallelism.default' = '3';
-SET 'execution.checkpointing.interval' = '10s';
+SET 'execution.checkpointing.interval' = '60s';
+SET 'execution.checkpointing.min-pause' = '30s';
 
 CREATE TABLE clean_clickstream (
   event_time STRING,
@@ -18,7 +19,8 @@ CREATE TABLE clean_clickstream (
   'topic' = 'clickstream-clean',
   'properties.bootstrap.servers' = 'redpanda:9092',
   'properties.group.id' = 'm3-analytics',
-  'scan.startup.mode' = 'earliest-offset',
+  'scan.startup.mode' = 'group-offsets',
+  'properties.auto.offset.reset' = 'earliest',
   'format' = 'json'
 );
 

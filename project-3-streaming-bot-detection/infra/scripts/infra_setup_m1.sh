@@ -31,8 +31,8 @@ create_topic_if_missing() {
 docker compose "${COMPOSE_FILES[@]}" up -d redpanda redpanda-console
 
 echo "Creating M1 topics..."
-create_topic_if_missing clickstream-raw 3 604800000
-create_topic_if_missing clickstream-clean 3 604800000
+create_topic_if_missing clickstream-raw 4 604800000
+create_topic_if_missing clickstream-clean 4 604800000
 create_topic_if_missing clickstream-dlq 1 604800000
 
 echo

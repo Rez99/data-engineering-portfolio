@@ -56,10 +56,10 @@ public class OperationalBotScoringJob {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(config.parallelism);
-        env.enableCheckpointing(10_000L);
+        env.enableCheckpointing(60_000L);
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
         env.getCheckpointConfig().setCheckpointTimeout(300_000L);
-        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(5_000L);
+        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30_000L);
         env.getCheckpointConfig().setCheckpointStorage("file:///opt/flink/datasets/flink-checkpoints/m4-operational");
         env.getCheckpointConfig().setExternalizedCheckpointCleanup(
                 CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);

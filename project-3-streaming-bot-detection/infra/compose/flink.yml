@@ -15,8 +15,9 @@ services:
         jobmanager.memory.process.size: 1600m
         rest.address: jobmanager
         rest.bind-address: 0.0.0.0
+        pekko.ask.timeout: 60 s
         taskmanager.numberOfTaskSlots: 12
-        parallelism.default: 3
+        parallelism.default: 4
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
       - ../../infra/flink/lib:/opt/flink/usrlib:ro
@@ -33,9 +34,11 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
-        taskmanager.memory.process.size: 4096m
+        pekko.ask.timeout: 60 s
+        taskmanager.memory.process.size: 6144m
+        taskmanager.cpu.cores: 12
         taskmanager.numberOfTaskSlots: 12
-        parallelism.default: 3
+        parallelism.default: 4
     volumes:
       - ../../infra/flink/lib:/opt/flink/usrlib:ro
       - ../../datasets:/opt/flink/datasets
