@@ -1,6 +1,6 @@
 SET 'execution.runtime-mode' = 'streaming';
 SET 'pipeline.name' = 'm2-clickstream-validation';
-SET 'parallelism.default' = '2';
+SET 'parallelism.default' = '3';
 
 SET 'execution.checkpointing.interval' = '10s';
 SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
@@ -25,6 +25,7 @@ CREATE TABLE raw_clickstream (
 );
 
 CREATE TABLE clean_clickstream (
+  user_session_key STRING,
   event_time STRING,
   event_type STRING,
   product_id STRING,
@@ -38,7 +39,10 @@ CREATE TABLE clean_clickstream (
   'connector' = 'kafka',
   'topic' = 'clickstream-clean',
   'properties.bootstrap.servers' = 'redpanda:9092',
-  'format' = 'json'
+  'key.format' = 'raw',
+  'key.fields' = 'user_session_key',
+  'value.format' = 'json',
+  'value.fields-include' = 'EXCEPT_KEY'
 );
 
 CREATE TABLE clickstream_dlq (
@@ -56,6 +60,7 @@ EXECUTE STATEMENT SET
 BEGIN
   INSERT INTO clean_clickstream
   SELECT
+    user_session AS user_session_key,
     event_time,
     event_type,
     product_id,

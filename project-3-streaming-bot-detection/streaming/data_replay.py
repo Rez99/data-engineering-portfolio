@@ -601,7 +601,7 @@ class RpkKafkaSink(EventSink):
             "--brokers",
             self.config.kafka_brokers,
             "--format",
-            "%v{json}\n",
+            "%k\t%v{json}\n",
             "--output-format",
             "",
         ]
@@ -618,8 +618,9 @@ class RpkKafkaSink(EventSink):
             raise RuntimeError("Kafka producer process exited before replay finished")
 
         payload = json.dumps(prepared_event.event, separators=(",", ":"))
+        key = prepared_event.event.get("user_session", "")
         try:
-            self.process.stdin.write(payload + "\n")
+            self.process.stdin.write(f"{key}\t{payload}\n")
         except BrokenPipeError as error:
             raise RuntimeError("Kafka producer process closed unexpectedly") from error
 

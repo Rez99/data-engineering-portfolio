@@ -493,7 +493,7 @@ public class OperationalBotScoringJob {
         public String jdbcPassword = DEFAULT_JDBC_PASSWORD;
         public String botConfigPath = DEFAULT_BOT_CONFIG_PATH;
         public String normalizationValuesPath = DEFAULT_NORMALIZATION_VALUES_PATH;
-        public int parallelism = 2;
+        public int parallelism = 3;
 
         static JobConfig fromArgs(String[] args) {
             JobConfig config = new JobConfig();

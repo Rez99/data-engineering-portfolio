@@ -300,6 +300,7 @@ The platform ingests an unbounded stream of clickstream events through Kafka. Hi
 
 - Continuous event stream: historical clickstream rows are replayed as live events so the pipeline behaves like an always-on production feed rather than a one-time batch load.
 - Kafka topics: raw, clean, and DLQ topics separate ingestion, validation, and error handling concerns while preserving a durable event log for downstream consumers.
+- Session-keyed topic partitioning: raw and clean Kafka records are keyed by `user_session`, allowing Flink to consume in parallel while keeping events from the same session on the same topic partition.
 - Multiple producers and consumers: event replay, validation, Parquet storage, bot scoring, and dashboarding operate as independent components connected through Kafka.
 
 ---
@@ -333,11 +334,6 @@ The same validated event stream supports both analytical and operational workloa
 Schema validation separates malformed events into a Dead Letter Queue before downstream processing. Replay and Flink checkpointing allow deterministic testing and recovery following failures.
 
 **Capabilities**
-python3 streaming/data_replay.py \
-    --sink kafka \
-    --speed 100000x \
-    --quiet \
-    --progress-every 5000000
 - Schema validation: malformed or incomplete clickstream records are rejected before they can corrupt analytical datasets or bot-scoring state.
 - Dead Letter Queue: invalid events are preserved in a separate Kafka topic so failures can be inspected without blocking valid traffic.
 - Replay: the replay engine can rerun the same source data at configurable speeds, making behavior reproducible during development and testing.

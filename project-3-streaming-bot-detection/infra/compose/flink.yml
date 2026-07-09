@@ -16,7 +16,7 @@ services:
         rest.address: jobmanager
         rest.bind-address: 0.0.0.0
         taskmanager.numberOfTaskSlots: 12
-        parallelism.default: 2
+        parallelism.default: 3
     volumes:
       - ../../streaming:/opt/flink/jobs:ro
       - ../../infra/flink/lib:/opt/flink/usrlib:ro
@@ -35,7 +35,7 @@ services:
         jobmanager.rpc.address: jobmanager
         taskmanager.memory.process.size: 4096m
         taskmanager.numberOfTaskSlots: 12
-        parallelism.default: 2
+        parallelism.default: 3
     volumes:
       - ../../infra/flink/lib:/opt/flink/usrlib:ro
       - ../../datasets:/opt/flink/datasets
@@ -121,7 +121,7 @@ services:
           "$${JAR}" \
           --bot-config /opt/flink/datasets/reference/bot_config.json \
           --normalization-values /opt/flink/generated/normalization_values.csv \
-          --parallelism 2
+          --parallelism 3
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
