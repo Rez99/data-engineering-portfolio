@@ -556,3 +556,11 @@ The Grafana dashboard visualizes live bot detection metrics from PostgreSQL, inc
 <img src="assets/results/session_scores.png" alt="PostgreSQL query showing operational session bot scores" width="1000">
 
 The operational scoring table stores continuously updated session-level bot scores. This output connects the live streaming pipeline back to the session walkthrough in Section 2.
+
+python3 streaming/data_replay.py \
+    --sink kafka \
+    --speed 10000x \
+    --quiet \
+    --progress-every 10000
+
+let's show the shape of the session state and how it progresses.

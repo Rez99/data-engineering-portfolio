@@ -2,6 +2,7 @@ package com.portfolio.botdetection;
 
 import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -32,8 +33,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -136,8 +135,16 @@ public class OperationalBotScoringJob {
 
         sessionUpdates
                 .filter(update -> "active".equals(update.sessionStatus))
+                .keyBy(update -> update.userSession)
+                .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+                .reduce((left, right) -> right.lastEventTimeMillis >= left.lastEventTimeMillis
+                        ? right
+                        : left)
+                .name("latest-session-update-per-window")
                 .windowAll(TumblingEventTimeWindows.of(Time.minutes(5)))
-                .process(new BotRateWindowFunction(botConfig.botScoreThreshold))
+                .aggregate(
+                        new BotRateAggregateFunction(botConfig.botScoreThreshold),
+                        new BotRateWindowResultFunction())
                 .name("event-time-bot-rate")
                 .addSink(JdbcSink.sink(
                         "INSERT INTO stream_bot_metrics "
@@ -198,6 +205,8 @@ public class OperationalBotScoringJob {
             extends KeyedProcessFunction<String, ClickEvent, SessionUpdate> {
         private final BotConfig config;
         private transient ValueState<SessionState> state;
+        private transient long activeSessions;
+        private transient long retainedEventTimestamps;
 
         SessionScoringFunction(BotConfig config) {
             this.config = config;
@@ -207,6 +216,9 @@ public class OperationalBotScoringJob {
         public void open(org.apache.flink.configuration.Configuration parameters) {
             state = getRuntimeContext().getState(
                     new ValueStateDescriptor<>("active-session", SessionState.class));
+            getRuntimeContext().getMetricGroup().gauge("activeSessions", () -> activeSessions);
+            getRuntimeContext().getMetricGroup().gauge(
+                    "retainedEventTimestamps", () -> retainedEventTimestamps);
         }
 
         @Override
@@ -219,14 +231,21 @@ public class OperationalBotScoringJob {
             if (current != null
                     && event.eventTimeMillis - current.lastEventTimeMillis > config.timeoutMillis) {
                 out.collect(current.toUpdate("closed", current.closeTimerMillis));
+                removeFromInstrumentation(current);
                 state.clear();
                 current = null;
             }
 
             if (current == null) {
                 current = SessionState.start(event.userSession, event.eventTimeMillis);
+                activeSessions++;
+                retainedEventTimestamps++;
             } else {
+                long previousCloseTimerMillis = current.closeTimerMillis;
                 current.addEvent(event.eventTimeMillis);
+                if (current.lastEventTimeMillis + config.timeoutMillis != previousCloseTimerMillis) {
+                    context.timerService().deleteEventTimeTimer(previousCloseTimerMillis);
+                }
             }
 
             current.botScore = config.score(current.meanClickIntervalMs(), current.minClickIntervalMs, current.sdClickIntervalMs());
@@ -244,57 +263,83 @@ public class OperationalBotScoringJob {
             SessionState current = state.value();
             if (current != null && timestamp == current.closeTimerMillis) {
                 out.collect(current.toUpdate("closed", timestamp));
+                removeFromInstrumentation(current);
                 state.clear();
             }
         }
+
+        private void removeFromInstrumentation(SessionState current) {
+            activeSessions = Math.max(0L, activeSessions - 1L);
+            retainedEventTimestamps = Math.max(0L, retainedEventTimestamps - 1L);
+        }
     }
 
-    public static class BotRateWindowFunction
-            extends ProcessAllWindowFunction<SessionUpdate, StreamMetric, TimeWindow> {
+    public static class BotRateAggregateFunction
+            implements AggregateFunction<SessionUpdate, BotRateAccumulator, BotRateAccumulator> {
         private final double threshold;
 
-        BotRateWindowFunction(double threshold) {
+        BotRateAggregateFunction(double threshold) {
             this.threshold = threshold;
         }
 
         @Override
+        public BotRateAccumulator createAccumulator() {
+            return new BotRateAccumulator();
+        }
+
+        @Override
+        public BotRateAccumulator add(SessionUpdate update, BotRateAccumulator accumulator) {
+            accumulator.activeSessions++;
+            if (update.botScore >= threshold) {
+                accumulator.botSessions++;
+            }
+            accumulator.scoreSum += update.botScore;
+            int bucket = Math.min(4, Math.max(0, (int) Math.floor(update.botScore / 0.2)));
+            accumulator.buckets[bucket]++;
+            return accumulator;
+        }
+
+        @Override
+        public BotRateAccumulator getResult(BotRateAccumulator accumulator) {
+            return accumulator;
+        }
+
+        @Override
+        public BotRateAccumulator merge(BotRateAccumulator left, BotRateAccumulator right) {
+            left.activeSessions += right.activeSessions;
+            left.botSessions += right.botSessions;
+            left.scoreSum += right.scoreSum;
+            for (int i = 0; i < left.buckets.length; i++) {
+                left.buckets[i] += right.buckets[i];
+            }
+            return left;
+        }
+    }
+
+    public static class BotRateWindowResultFunction
+            extends ProcessAllWindowFunction<BotRateAccumulator, StreamMetric, TimeWindow> {
+        @Override
         public void process(
-                ProcessAllWindowFunction<SessionUpdate, StreamMetric, TimeWindow>.Context context,
-                Iterable<SessionUpdate> updates,
+                ProcessAllWindowFunction<BotRateAccumulator, StreamMetric, TimeWindow>.Context context,
+                Iterable<BotRateAccumulator> accumulators,
                 Collector<StreamMetric> out) {
-            Map<String, SessionUpdate> latestBySession = new HashMap<>();
-            for (SessionUpdate update : updates) {
-                SessionUpdate existing = latestBySession.get(update.userSession);
-                if (existing == null || update.lastEventTimeMillis >= existing.lastEventTimeMillis) {
-                    latestBySession.put(update.userSession, update);
-                }
-            }
-
-            long activeSessions = latestBySession.size();
-            long botSessions = 0L;
-            double scoreSum = 0.0;
-            int[] buckets = new int[5];
-            for (SessionUpdate update : latestBySession.values()) {
-                if (update.botScore >= threshold) {
-                    botSessions++;
-                }
-                scoreSum += update.botScore;
-                int bucket = Math.min(4, Math.max(0, (int) Math.floor(update.botScore / 0.2)));
-                buckets[bucket]++;
-            }
-
+            BotRateAccumulator accumulator = accumulators.iterator().next();
             StreamMetric metric = new StreamMetric();
             metric.windowStartMillis = context.window().getStart();
             metric.windowEndMillis = context.window().getEnd();
-            metric.activeSessions = activeSessions;
-            metric.botSessions = botSessions;
-            metric.botRate = activeSessions == 0 ? 0.0 : (double) botSessions / activeSessions;
-            metric.avgBotScore = activeSessions == 0 ? 0.0 : scoreSum / activeSessions;
-            metric.scoreHistogram = "0.0-0.2=" + buckets[0]
-                    + ",0.2-0.4=" + buckets[1]
-                    + ",0.4-0.6=" + buckets[2]
-                    + ",0.6-0.8=" + buckets[3]
-                    + ",0.8-1.0=" + buckets[4];
+            metric.activeSessions = accumulator.activeSessions;
+            metric.botSessions = accumulator.botSessions;
+            metric.botRate = accumulator.activeSessions == 0
+                    ? 0.0
+                    : (double) accumulator.botSessions / accumulator.activeSessions;
+            metric.avgBotScore = accumulator.activeSessions == 0
+                    ? 0.0
+                    : accumulator.scoreSum / accumulator.activeSessions;
+            metric.scoreHistogram = "0.0-0.2=" + accumulator.buckets[0]
+                    + ",0.2-0.4=" + accumulator.buckets[1]
+                    + ",0.4-0.6=" + accumulator.buckets[2]
+                    + ",0.6-0.8=" + accumulator.buckets[3]
+                    + ",0.8-1.0=" + accumulator.buckets[4];
             out.collect(metric);
         }
     }
@@ -331,7 +376,6 @@ public class OperationalBotScoringJob {
         public Double minClickIntervalMs;
         public double botScore;
         public long closeTimerMillis;
-        public ArrayList<Long> eventTimeMillis;
 
         public SessionState() {
         }
@@ -342,40 +386,23 @@ public class OperationalBotScoringJob {
             state.firstEventTimeMillis = eventTimeMillis;
             state.lastEventTimeMillis = eventTimeMillis;
             state.eventCount = 1L;
-            state.eventTimeMillis = new ArrayList<>();
-            state.eventTimeMillis.add(eventTimeMillis);
             return state;
         }
 
         void addEvent(long eventTimeMillis) {
-            if (this.eventTimeMillis == null) {
-                this.eventTimeMillis = new ArrayList<>();
-                this.eventTimeMillis.add(lastEventTimeMillis);
+            if (eventTimeMillis <= lastEventTimeMillis) {
+                return;
             }
 
-            int insertionPoint = Collections.binarySearch(this.eventTimeMillis, eventTimeMillis);
-            if (insertionPoint < 0) {
-                insertionPoint = -insertionPoint - 1;
-            }
-            this.eventTimeMillis.add(insertionPoint, eventTimeMillis);
-            recomputeIntervalStats();
-        }
-
-        void recomputeIntervalStats() {
-            eventCount = eventTimeMillis.size();
-            firstEventTimeMillis = eventTimeMillis.get(0);
-            lastEventTimeMillis = eventTimeMillis.get(eventTimeMillis.size() - 1);
-            intervalCount = Math.max(0, eventCount - 1);
-            intervalSumMs = 0.0;
-            intervalSumSquaresMs = 0.0;
-            minClickIntervalMs = null;
-
-            for (int i = 1; i < eventTimeMillis.size(); i++) {
-                double interval = eventTimeMillis.get(i) - eventTimeMillis.get(i - 1);
-                intervalSumMs += interval;
-                intervalSumSquaresMs += interval * interval;
-                minClickIntervalMs = minClickIntervalMs == null ? interval : Math.min(minClickIntervalMs, interval);
-            }
+            double interval = eventTimeMillis - lastEventTimeMillis;
+            eventCount++;
+            intervalCount++;
+            intervalSumMs += interval;
+            intervalSumSquaresMs += interval * interval;
+            minClickIntervalMs = minClickIntervalMs == null
+                    ? interval
+                    : Math.min(minClickIntervalMs, interval);
+            lastEventTimeMillis = eventTimeMillis;
         }
 
         Double meanClickIntervalMs() {
@@ -434,6 +461,16 @@ public class OperationalBotScoringJob {
         public String scoreHistogram;
 
         public StreamMetric() {
+        }
+    }
+
+    public static class BotRateAccumulator implements Serializable {
+        public long activeSessions;
+        public long botSessions;
+        public double scoreSum;
+        public long[] buckets = new long[5];
+
+        public BotRateAccumulator() {
         }
     }
 

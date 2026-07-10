@@ -24,7 +24,10 @@ services:
       - ../../datasets:/opt/flink/datasets
 
   taskmanager:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    image: p3-flink-taskmanager-diagnostics:1.19.1
+    build:
+      context: ../..
+      dockerfile: infra/flink/Dockerfile
     platform: linux/amd64
     container_name: p3-flink-taskmanager
     command: taskmanager
@@ -32,10 +35,14 @@ services:
     depends_on:
       - jobmanager
     environment:
+      FLINK_ENV_JAVA_OPTS_TM: -XX:NativeMemoryTracking=summary -XX:InitiatingHeapOccupancyPercent=20 -XX:G1ReservePercent=25 -XX:MaxGCPauseMillis=500 -XX:G1PeriodicGCInterval=30000
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         pekko.ask.timeout: 60 s
-        taskmanager.memory.process.size: 6144m
+        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.managed.size: 128m
+        taskmanager.memory.network.min: 256m
+        taskmanager.memory.network.max: 256m
         taskmanager.cpu.cores: 12
         taskmanager.numberOfTaskSlots: 12
         parallelism.default: 4

@@ -10,9 +10,9 @@ services:
       - --mode
       - dev-container
       - --smp
-      - "1"
+      - "2"
       - --memory
-      - 1G
+      - 2G
       - --reserve-memory
       - 0M
       - --overprovisioned
