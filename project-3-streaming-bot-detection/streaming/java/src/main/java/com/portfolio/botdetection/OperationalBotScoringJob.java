@@ -93,7 +93,15 @@ public class OperationalBotScoringJob {
                 .process(new SessionScoringFunction(botConfig))
                 .name("event-time-session-scoring");
 
-        sessionUpdates.addSink(JdbcSink.sink(
+        DataStream<SessionUpdate> sessionScoreWrites = sessionUpdates
+                .filter(update -> "active".equals(update.sessionStatus))
+                .keyBy(update -> update.userSession)
+                .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+                .reduce(OperationalBotScoringJob::latestSessionUpdate)
+                .name("latest-session-score-write-per-minute")
+                .union(sessionUpdates.filter(update -> "closed".equals(update.sessionStatus)));
+
+        sessionScoreWrites.addSink(JdbcSink.sink(
                 "INSERT INTO session_bot_scores "
                         + "(user_session, last_event_time, event_count, interval_count, "
                         + "mean_click_interval_ms, min_click_interval_ms, sd_click_interval_ms, "
@@ -190,6 +198,16 @@ public class OperationalBotScoringJob {
                 .withUsername(config.jdbcUser)
                 .withPassword(config.jdbcPassword)
                 .build();
+    }
+
+    private static SessionUpdate latestSessionUpdate(SessionUpdate left, SessionUpdate right) {
+        if (right.lastEventTimeMillis > left.lastEventTimeMillis) {
+            return right;
+        }
+        if (right.lastEventTimeMillis == left.lastEventTimeMillis && right.eventCount >= left.eventCount) {
+            return right;
+        }
+        return left;
     }
 
     private static void setNullableDouble(java.sql.PreparedStatement statement, int index, Double value)
@@ -530,7 +548,7 @@ public class OperationalBotScoringJob {
         public String jdbcPassword = DEFAULT_JDBC_PASSWORD;
         public String botConfigPath = DEFAULT_BOT_CONFIG_PATH;
         public String normalizationValuesPath = DEFAULT_NORMALIZATION_VALUES_PATH;
-        public int parallelism = 3;
+        public int parallelism = 4;
 
         static JobConfig fromArgs(String[] args) {
             JobConfig config = new JobConfig();

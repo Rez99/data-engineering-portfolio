@@ -145,7 +145,7 @@ services:
           "$${JAR}" \
           --bot-config /opt/flink/datasets/reference/bot_config.json \
           --normalization-values /opt/flink/generated/normalization_values.csv \
-          --parallelism 3
+          --parallelism 4
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
