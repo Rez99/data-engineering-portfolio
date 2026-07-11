@@ -2,7 +2,10 @@ name: project-3-streaming-bot-detection-m1
 
 services:
   jobmanager:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    image: p3-flink-arm64:1.19.1-scala_2.12-java17
+    build:
+      context: ../..
+      dockerfile: infra/flink/Dockerfile
     container_name: p3-flink-jobmanager
     command: jobmanager
     restart: unless-stopped
@@ -23,7 +26,7 @@ services:
       - ../../datasets:/opt/flink/datasets
 
   taskmanager:
-    image: p3-flink-taskmanager-diagnostics:1.19.1
+    image: p3-flink-arm64:1.19.1-scala_2.12-java17
     build:
       context: ../..
       dockerfile: infra/flink/Dockerfile
@@ -50,7 +53,10 @@ services:
       - ../../datasets:/opt/flink/datasets
 
   validation-job:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    image: p3-flink-arm64:1.19.1-scala_2.12-java17
+    build:
+      context: ../..
+      dockerfile: infra/flink/Dockerfile
     container_name: p3-flink-validation-job
     depends_on:
       - jobmanager
@@ -76,7 +82,10 @@ services:
     restart: "no"
 
   analytics-job:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    image: p3-flink-arm64:1.19.1-scala_2.12-java17
+    build:
+      context: ../..
+      dockerfile: infra/flink/Dockerfile
     container_name: p3-flink-analytics-job
     depends_on:
       - jobmanager
@@ -102,7 +111,10 @@ services:
     restart: "no"
 
   operational-job:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    image: p3-flink-arm64:1.19.1-scala_2.12-java17
+    build:
+      context: ../..
+      dockerfile: infra/flink/Dockerfile
     container_name: p3-flink-operational-job
     depends_on:
       - jobmanager
