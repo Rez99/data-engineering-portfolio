@@ -451,11 +451,11 @@ def maybe_corrupt(
     corrupt_probability: float,
 ) -> tuple[dict[str, str], str | None]:
     """Return a possibly corrupted event copy and a corruption reason."""
-    prepared = dict(event)
     if corrupt_probability == 0 or rng.random() >= corrupt_probability:
-        return prepared, None
+        return event, None
 
     reason, field, value = rng.choice(CORRUPTION_SCENARIOS)
+    prepared = dict(event)
     prepared[field] = value
     return prepared, reason
 
