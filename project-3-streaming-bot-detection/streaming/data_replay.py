@@ -564,6 +564,11 @@ class EventSink:
     def send(self, prepared_event: PreparedEvent) -> None:
         """Send one prepared event."""
 
+    def send_batch(self, prepared_events: list[PreparedEvent]) -> None:
+        """Send one replay tick of prepared events."""
+        for prepared_event in prepared_events:
+            self.send(prepared_event)
+
     def close(self) -> None:
         """Close resources after replay completes."""
 
@@ -617,12 +622,29 @@ class RpkKafkaSink(EventSink):
         if self.process.poll() is not None:
             raise RuntimeError("Kafka producer process exited before replay finished")
 
-        payload = json.dumps(prepared_event.event, separators=(",", ":"))
-        key = prepared_event.event.get("user_session", "")
         try:
-            self.process.stdin.write(f"{key}\t{payload}\n")
+            self.process.stdin.write(self._format_record(prepared_event))
         except BrokenPipeError as error:
             raise RuntimeError("Kafka producer process closed unexpectedly") from error
+
+    def send_batch(self, prepared_events: list[PreparedEvent]) -> None:
+        if not prepared_events:
+            return
+        if self.process is None or self.process.stdin is None:
+            raise RuntimeError("Kafka sink is not started")
+        if self.process.poll() is not None:
+            raise RuntimeError("Kafka producer process exited before replay finished")
+
+        try:
+            self.process.stdin.write("".join(self._format_record(event) for event in prepared_events))
+        except BrokenPipeError as error:
+            raise RuntimeError("Kafka producer process closed unexpectedly") from error
+
+    @staticmethod
+    def _format_record(prepared_event: PreparedEvent) -> str:
+        payload = json.dumps(prepared_event.event, separators=(",", ":"))
+        key = prepared_event.event.get("user_session", "")
+        return f"{key}\t{payload}\n"
 
     def close(self) -> None:
         if self.process is None:
@@ -693,8 +715,7 @@ def run_replay(config: ReplayConfig) -> None:
             ]
             prepared_events.sort(key=lambda event: (event.send_time, event.row_number))
 
-            for prepared_event in prepared_events:
-                sink.send(prepared_event)
+            sink.send_batch(prepared_events)
 
             total_dispatched += len(prepared_events)
             latest_batch_event_time = max(
