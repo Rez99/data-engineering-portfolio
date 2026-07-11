@@ -3,7 +3,6 @@ name: project-3-streaming-bot-detection-m1
 services:
   jobmanager:
     image: apache/flink:1.19.1-scala_2.12-java17
-    platform: linux/amd64
     container_name: p3-flink-jobmanager
     command: jobmanager
     restart: unless-stopped
@@ -28,18 +27,18 @@ services:
     build:
       context: ../..
       dockerfile: infra/flink/Dockerfile
-    platform: linux/amd64
     container_name: p3-flink-taskmanager
     command: taskmanager
     restart: unless-stopped
+    mem_limit: 3584m
     depends_on:
       - jobmanager
     environment:
-      FLINK_ENV_JAVA_OPTS_TM: -XX:NativeMemoryTracking=summary -XX:InitiatingHeapOccupancyPercent=20 -XX:G1ReservePercent=25 -XX:MaxGCPauseMillis=500 -XX:G1PeriodicGCInterval=30000
+      FLINK_ENV_JAVA_OPTS_TM: -Xms512m -XX:NativeMemoryTracking=summary -XX:InitiatingHeapOccupancyPercent=20 -XX:G1ReservePercent=25 -XX:MaxGCPauseMillis=500 -XX:G1PeriodicGCInterval=30000
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         pekko.ask.timeout: 60 s
-        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.process.size: 2304m
         taskmanager.memory.managed.size: 128m
         taskmanager.memory.network.min: 256m
         taskmanager.memory.network.max: 256m
@@ -52,7 +51,6 @@ services:
 
   validation-job:
     image: apache/flink:1.19.1-scala_2.12-java17
-    platform: linux/amd64
     container_name: p3-flink-validation-job
     depends_on:
       - jobmanager
@@ -79,7 +77,6 @@ services:
 
   analytics-job:
     image: apache/flink:1.19.1-scala_2.12-java17
-    platform: linux/amd64
     container_name: p3-flink-analytics-job
     depends_on:
       - jobmanager
@@ -106,7 +103,6 @@ services:
 
   operational-job:
     image: apache/flink:1.19.1-scala_2.12-java17
-    platform: linux/amd64
     container_name: p3-flink-operational-job
     depends_on:
       - jobmanager
