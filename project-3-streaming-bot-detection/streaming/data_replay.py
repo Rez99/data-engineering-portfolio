@@ -703,16 +703,14 @@ def run_replay(config: ReplayConfig) -> None:
                 except StopIteration:
                     next_event = None
 
-            prepared_events = [
-                event
-                for event in pending_events
-                if event.send_time <= cursor
-            ]
-            pending_events = [
-                event
-                for event in pending_events
-                if event.send_time > cursor
-            ]
+            prepared_events = []
+            still_pending_events = []
+            for event in pending_events:
+                if event.send_time <= cursor:
+                    prepared_events.append(event)
+                else:
+                    still_pending_events.append(event)
+            pending_events = still_pending_events
             prepared_events.sort(key=lambda event: (event.send_time, event.row_number))
 
             sink.send_batch(prepared_events)
