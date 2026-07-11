@@ -1,4 +1,2 @@
-# M1 replay uses only the Python standard library.
-# Kafka publishing is handled through the local Redpanda rpk CLI in Docker.
-#
+confluent-kafka==2.14.2
 # Exploration-only dependencies live in exploration/requirements.txt.

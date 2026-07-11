@@ -4,7 +4,7 @@ The M1 replay engine reads the October 2019 clickstream CSV incrementally,
 emits events according to their original event timestamps, and routes prepared
 events through logical producer workers. Events can be written to the console
 for local replay inspection or published to the raw Kafka-compatible
-``clickstream-raw`` topic through Redpanda's bundled ``rpk`` CLI.
+``clickstream-raw`` topic through a native Kafka producer.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import gzip
 import json
 import random
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -31,9 +30,8 @@ from urllib.request import urlopen
 DEFAULT_SOURCE_URL = "https://data.rees46.com/datasets/marketplace/2019-Oct.csv.gz"
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_PATH = PROJECT_DIR / "datasets/source/2019-Oct.csv.gz"
-DEFAULT_COMPOSE_FILE = PROJECT_DIR / "infra/compose/kafka.yml"
 DEFAULT_KAFKA_TOPIC = "clickstream-raw"
-DEFAULT_KAFKA_BROKERS = "localhost:9092"
+DEFAULT_KAFKA_BROKERS = "localhost:19092"
 SUPPORTED_EVENT_TYPES = {"view", "cart", "purchase", "remove_from_cart"}
 CORRUPTION_SCENARIOS = (
     ("null user_session", "user_session", ""),
@@ -60,7 +58,6 @@ class ReplayConfig:
     sink: str
     kafka_topic: str
     kafka_brokers: str
-    compose_file: Path
     quiet: bool
     progress_every: int
     debug: bool
@@ -252,13 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--kafka-brokers",
         default=DEFAULT_KAFKA_BROKERS,
-        help=f"Broker address used inside the Redpanda container. Default: {DEFAULT_KAFKA_BROKERS}",
-    )
-    parser.add_argument(
-        "--compose-file",
-        type=Path,
-        default=DEFAULT_COMPOSE_FILE,
-        help=f"Docker Compose file used for rpk publishing. Default: {DEFAULT_COMPOSE_FILE}",
+        help=f"Kafka broker address used by the replay producer. Default: {DEFAULT_KAFKA_BROKERS}",
     )
     parser.add_argument(
         "--quiet",
@@ -297,7 +288,6 @@ def load_config(argv: list[str] | None = None) -> ReplayConfig:
         sink=args.sink,
         kafka_topic=args.kafka_topic,
         kafka_brokers=args.kafka_brokers,
-        compose_file=args.compose_file,
         quiet=args.quiet,
         progress_every=args.progress_every,
         debug=args.debug,
@@ -369,7 +359,6 @@ def print_config(config: ReplayConfig, downloaded: bool) -> None:
     if config.sink == "kafka":
         print(f"Kafka topic: {config.kafka_topic}")
         print(f"Kafka brokers: {config.kafka_brokers}")
-        print(f"Compose file: {config.compose_file}")
     print(f"Quiet mode: {'on' if config.quiet else 'off'}")
     if config.quiet:
         print(f"Progress interval: {config.progress_every:,} event(s)")
@@ -580,89 +569,84 @@ class ConsoleSink(EventSink):
         return
 
 
-class RpkKafkaSink(EventSink):
-    """Publish JSON records to Kafka through the local Redpanda container."""
+class ConfluentKafkaSink(EventSink):
+    """Publish JSON records to Kafka through the native Kafka client."""
 
     def __init__(self, config: ReplayConfig) -> None:
         self.config = config
-        self.process: subprocess.Popen[str] | None = None
+        self.producer = None
+        self.delivery_errors: list[str] = []
 
     def start(self) -> None:
-        if not self.config.compose_file.exists():
-            raise RuntimeError(f"Compose file not found: {self.config.compose_file}")
+        try:
+            from confluent_kafka import Producer
+        except ImportError as error:
+            raise RuntimeError(
+                "Kafka sink requires confluent-kafka. Install dependencies with "
+                "`pip install -r requirements.txt`."
+            ) from error
 
-        command = [
-            "docker",
-            "compose",
-            "-f",
-            str(self.config.compose_file),
-            "exec",
-            "-T",
-            "redpanda",
-            "rpk",
-            "topic",
-            "produce",
-            self.config.kafka_topic,
-            "--brokers",
-            self.config.kafka_brokers,
-            "--format",
-            "%k\t%v{json}\n",
-            "--output-format",
-            "",
-        ]
-        self.process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            text=True,
-        )
+        self.producer = Producer({
+            "bootstrap.servers": self.config.kafka_brokers,
+            "compression.type": "snappy",
+            "linger.ms": 20,
+            "batch.num.messages": 10000,
+            "queue.buffering.max.messages": 100000,
+            "client.id": "project-3-data-replay",
+        })
 
     def send(self, prepared_event: PreparedEvent) -> None:
-        if self.process is None or self.process.stdin is None:
-            raise RuntimeError("Kafka sink is not started")
-        if self.process.poll() is not None:
-            raise RuntimeError("Kafka producer process exited before replay finished")
-
-        try:
-            self.process.stdin.write(self._format_record(prepared_event))
-        except BrokenPipeError as error:
-            raise RuntimeError("Kafka producer process closed unexpectedly") from error
+        self.send_batch([prepared_event])
 
     def send_batch(self, prepared_events: list[PreparedEvent]) -> None:
         if not prepared_events:
             return
-        if self.process is None or self.process.stdin is None:
+        if self.producer is None:
             raise RuntimeError("Kafka sink is not started")
-        if self.process.poll() is not None:
-            raise RuntimeError("Kafka producer process exited before replay finished")
 
-        try:
-            self.process.stdin.write("".join(self._format_record(event) for event in prepared_events))
-        except BrokenPipeError as error:
-            raise RuntimeError("Kafka producer process closed unexpectedly") from error
+        for event in prepared_events:
+            self._produce_with_backpressure(event)
+        self.producer.poll(0)
 
-    @staticmethod
-    def _format_record(prepared_event: PreparedEvent) -> str:
-        payload = json.dumps(prepared_event.event, separators=(",", ":"))
+    def _produce_with_backpressure(self, prepared_event: PreparedEvent) -> None:
+        if self.producer is None:
+            raise RuntimeError("Kafka sink is not started")
+
         key = prepared_event.event.get("user_session", "")
-        return f"{key}\t{payload}\n"
+        payload = json.dumps(prepared_event.event, separators=(",", ":"))
+        while True:
+            try:
+                self.producer.produce(
+                    self.config.kafka_topic,
+                    key=key,
+                    value=payload,
+                    callback=self._delivery_callback,
+                )
+                return
+            except BufferError:
+                self.producer.poll(0.1)
+
+    def _delivery_callback(self, error, message) -> None:
+        if error is not None:
+            self.delivery_errors.append(str(error))
 
     def close(self) -> None:
-        if self.process is None:
+        if self.producer is None:
             return
 
-        if self.process.stdin:
-            self.process.stdin.close()
-
-        exit_code = self.process.wait()
-        self.process = None
-        if exit_code != 0:
-            raise RuntimeError(f"Kafka producer exited with status {exit_code}")
+        remaining = self.producer.flush(30)
+        self.producer = None
+        if remaining > 0:
+            raise RuntimeError(f"Kafka producer closed with {remaining} undelivered message(s)")
+        if self.delivery_errors:
+            sample = "; ".join(self.delivery_errors[:3])
+            raise RuntimeError(f"Kafka delivery failed for {len(self.delivery_errors)} message(s): {sample}")
 
 
 def build_sink(config: ReplayConfig) -> EventSink:
     """Create the configured replay output sink."""
     if config.sink == "kafka":
-        return RpkKafkaSink(config)
+        return ConfluentKafkaSink(config)
     return ConsoleSink()
 
 

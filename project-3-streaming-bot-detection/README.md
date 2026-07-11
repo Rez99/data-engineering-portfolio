@@ -495,7 +495,7 @@ The replay engine is configurable so the same source dataset can be used for qui
 | `--quiet` | Suppress per-event logs during larger runs. | `--quiet` |
 | `--progress-every` | Print compact progress updates every N dispatched events when quiet mode is enabled. | `--progress-every 100000` |
 
-Source and Kafka connection parameters are also configurable through `--dataset-path`, `--source-url`, `--kafka-topic`, `--kafka-brokers`, and `--compose-file`, but the defaults are designed for the local Docker Compose deployment.
+Source and Kafka connection parameters are also configurable through `--dataset-path`, `--source-url`, `--kafka-topic`, and `--kafka-brokers`, but the defaults are designed for the local Docker Compose deployment.
 
 ## 4.5 Platform Services
 
@@ -564,6 +564,8 @@ python3 streaming/data_replay.py \
     --progress-every 100000
 
 let's show the shape of the session state and how it progresses.
+
+MEMORY LEAKS, WRONG IMAGE MEMORY EXPLOSION, DUPLICATE PROCESS PATHS
 
 Yes, that’s basically right, with one important distinction between the three designs.
 
