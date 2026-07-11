@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/lib/docker_diagnostics.sh"
 CONNECTOR_DIR="${PROJECT_DIR}/infra/flink/lib"
+GENERATED_FLINK_DIR="${PROJECT_DIR}/infra/flink/generated"
+MAVEN_CACHE_DIR="${PROJECT_DIR}/infra/flink/m2"
+JAVA_DIR="${PROJECT_DIR}/streaming/java"
+STREAMING_JOBS_JAR="${GENERATED_FLINK_DIR}/streaming-jobs.jar"
+MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-17}"
 KAFKA_CONNECTOR_JAR="${CONNECTOR_DIR}/flink-sql-connector-kafka-3.2.0-1.19.jar"
 KAFKA_CONNECTOR_URL="https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar"
 COMPOSE_FILES=(
@@ -50,6 +55,20 @@ wait_for_flink_job() {
   exit 1
 }
 
+build_streaming_jobs() {
+  mkdir -p "${GENERATED_FLINK_DIR}"
+
+  docker run --rm \
+    -v "${JAVA_DIR}:/work" \
+    -v "${MAVEN_CACHE_DIR}:/root/.m2" \
+    -w /work \
+    "${MAVEN_IMAGE}" \
+    mvn -q -DskipTests package
+
+  cp "${JAVA_DIR}/target/operational-bot-scoring-1.0.0.jar" \
+    "${STREAMING_JOBS_JAR}"
+}
+
 require_topic clickstream-raw
 require_topic clickstream-clean
 require_topic clickstream-dlq
@@ -59,6 +78,8 @@ if [[ ! -f "${KAFKA_CONNECTOR_JAR}" ]]; then
   echo "Downloading Flink Kafka SQL connector..."
   curl -fL "${KAFKA_CONNECTOR_URL}" -o "${KAFKA_CONNECTOR_JAR}"
 fi
+
+build_streaming_jobs
 
 docker compose "${COMPOSE_FILES[@]}" up -d jobmanager taskmanager
 

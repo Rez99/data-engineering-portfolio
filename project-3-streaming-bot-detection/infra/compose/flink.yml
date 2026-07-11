@@ -66,17 +66,23 @@ services:
       - bash
       - -lc
       - |
-        /opt/flink/bin/sql-client.sh \
-          -l /opt/flink/usrlib \
-          -D execution.target=remote \
+        JAR=/opt/flink/generated/streaming-jobs.jar
+        if [[ ! -f "$${JAR}" ]]; then
+          echo "Missing $${JAR}. Run ./infra/scripts/infra_setup_m2.sh first." >&2
+          exit 1
+        fi
+        /opt/flink/bin/flink run -d \
+          -c com.portfolio.botdetection.ClickstreamValidationJob \
           -D rest.address=jobmanager \
-          -f /opt/flink/jobs/flink_job_validation.sql
+          -C file:///opt/flink/usrlib/flink-sql-connector-kafka-3.2.0-1.19.jar \
+          "$${JAR}" \
+          --parallelism 4
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         rest.address: jobmanager
     volumes:
-      - ../../streaming:/opt/flink/jobs:ro
+      - ../../infra/flink/generated:/opt/flink/generated:ro
       - ../../infra/flink/lib:/opt/flink/usrlib:ro
       - ../../datasets:/opt/flink/datasets
     restart: "no"

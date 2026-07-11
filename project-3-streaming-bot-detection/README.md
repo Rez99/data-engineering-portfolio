@@ -559,8 +559,18 @@ The operational scoring table stores continuously updated session-level bot scor
 
 python3 streaming/data_replay.py \
     --sink kafka \
-    --speed 10000x \
+    --speed 100000x \
     --quiet \
-    --progress-every 10000
+    --progress-every 100000
 
 let's show the shape of the session state and how it progresses.
+
+Yes, that’s basically right, with one important distinction between the three designs.
+
+1. **Original temporary-view SQL design:** both the clean sink and DLQ sink referenced the same parsed and validated temporary view. Because a temporary view is a query definition rather than stored results, Flink’s physical `EXPLAIN` plan showed duplication of the upstream computation across the two sink branches. In practice, this meant the same source event could go through the `JSON_VALUE`, `TRY_CAST`, and validation `CASE` expressions once for the clean branch and again for the DLQ branch.
+
+2. **Materialized Kafka design:** the parsed and validated results were written to intermediate Kafka topics. This meant the expensive validation step could be computed once and stored before routing. However, every event then incurred additional Kafka writes, reads, serialization, broker disk and network I/O, and consumer-offset management. The validated topic was also read independently by the clean and DLQ consumer groups.
+
+3. **DataStream design:** the Java job consumes each raw event once, parses it once, validates it once, and immediately routes it either to the main clean output or to the DLQ side output. It therefore avoids both the duplicated SQL computation and the intermediate Kafka materialization hops.
+
+The improvement is not that DataStream is inherently faster than SQL. It is faster in this implementation because it guarantees one direct processing pass over each event, followed by immediate branching.

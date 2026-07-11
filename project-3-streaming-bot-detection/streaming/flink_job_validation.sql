@@ -59,19 +59,107 @@ CREATE TABLE clickstream_dlq (
   'format' = 'json'
 );
 
-CREATE TEMPORARY VIEW extracted_clickstream AS
-SELECT
-  payload,
-  JSON_VALUE(payload, '$.event_time') AS event_time,
-  JSON_VALUE(payload, '$.event_type') AS event_type,
-  JSON_VALUE(payload, '$.product_id') AS product_id,
-  JSON_VALUE(payload, '$.category_id') AS category_id,
-  JSON_VALUE(payload, '$.category_code') AS category_code,
-  JSON_VALUE(payload, '$.brand') AS brand,
-  JSON_VALUE(payload, '$.price') AS price,
-  JSON_VALUE(payload, '$.user_id') AS user_id,
-  JSON_VALUE(payload, '$.user_session') AS user_session
-FROM raw_clickstream;
+CREATE TABLE extracted_clickstream (
+  payload STRING,
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-extracted',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'format' = 'json'
+);
+
+CREATE TABLE extracted_clickstream_validate_route (
+  payload STRING,
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-extracted',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'properties.group.id' = 'm2-validation-validate-route',
+  'scan.startup.mode' = 'group-offsets',
+  'properties.auto.offset.reset' = 'earliest',
+  'format' = 'json'
+);
+
+CREATE TABLE validated_clickstream (
+  payload STRING,
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING,
+  failure_reason STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-validated',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'format' = 'json'
+);
+
+CREATE TABLE validated_clickstream_clean_route (
+  payload STRING,
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING,
+  failure_reason STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-validated',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'properties.group.id' = 'm2-validation-clean-route',
+  'scan.startup.mode' = 'group-offsets',
+  'properties.auto.offset.reset' = 'earliest',
+  'format' = 'json'
+);
+
+CREATE TABLE validated_clickstream_dlq_route (
+  payload STRING,
+  event_time STRING,
+  event_type STRING,
+  product_id STRING,
+  category_id STRING,
+  category_code STRING,
+  brand STRING,
+  price STRING,
+  user_id STRING,
+  user_session STRING,
+  failure_reason STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'clickstream-validated',
+  'properties.bootstrap.servers' = 'redpanda:9092',
+  'properties.group.id' = 'm2-validation-dlq-route',
+  'scan.startup.mode' = 'group-offsets',
+  'properties.auto.offset.reset' = 'earliest',
+  'format' = 'json'
+);
 
 CREATE TEMPORARY VIEW parsed_clickstream AS
 SELECT
@@ -87,9 +175,9 @@ SELECT
   TRY_CAST(price AS DOUBLE) AS price_value,
   user_id,
   user_session
-FROM extracted_clickstream;
+FROM extracted_clickstream_validate_route;
 
-CREATE TEMPORARY VIEW validated_clickstream AS
+CREATE TEMPORARY VIEW validated_clickstream_rows AS
 SELECT
   payload,
   event_time,
@@ -116,6 +204,35 @@ FROM parsed_clickstream;
 
 EXECUTE STATEMENT SET
 BEGIN
+  INSERT INTO extracted_clickstream
+  SELECT
+    payload,
+    JSON_VALUE(payload, '$.event_time') AS event_time,
+    JSON_VALUE(payload, '$.event_type') AS event_type,
+    JSON_VALUE(payload, '$.product_id') AS product_id,
+    JSON_VALUE(payload, '$.category_id') AS category_id,
+    JSON_VALUE(payload, '$.category_code') AS category_code,
+    JSON_VALUE(payload, '$.brand') AS brand,
+    JSON_VALUE(payload, '$.price') AS price,
+    JSON_VALUE(payload, '$.user_id') AS user_id,
+    JSON_VALUE(payload, '$.user_session') AS user_session
+  FROM raw_clickstream;
+
+  INSERT INTO validated_clickstream
+  SELECT
+    payload,
+    event_time,
+    event_type,
+    product_id,
+    category_id,
+    category_code,
+    brand,
+    price,
+    user_id,
+    user_session,
+    failure_reason
+  FROM validated_clickstream_rows;
+
   INSERT INTO clean_clickstream
   SELECT
     user_session AS user_session_key,
@@ -128,7 +245,7 @@ BEGIN
     price,
     user_id,
     user_session
-  FROM validated_clickstream
+  FROM validated_clickstream_clean_route
   WHERE failure_reason IS NULL;
 
   INSERT INTO clickstream_dlq
@@ -136,6 +253,6 @@ BEGIN
     payload AS original_payload,
     failure_reason,
     CAST(CURRENT_TIMESTAMP AS STRING) AS processing_timestamp
-  FROM validated_clickstream
+  FROM validated_clickstream_dlq_route
   WHERE failure_reason IS NOT NULL;
 END;
