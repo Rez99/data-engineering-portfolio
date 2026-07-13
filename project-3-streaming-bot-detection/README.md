@@ -1184,10 +1184,9 @@ Integrating the complete streaming platform exposed several problems that only b
        size.
 
 3. Throughput limitations
-   └── Once the platform was stable, consumer lag and Flink
-       backpressure identified the components limiting throughput,
-       allowing replay, validation, and PostgreSQL writes to be
-       optimized in turn.
+    └── Consumer lag and Flink backpressure exposed throughput bottlenecks; 
+        EXPLAIN plans then revealed duplicate processing, allowing replay, 
+        validation, and PostgreSQL writes to be optimized.
 ```
 
 Each investigation produced a new understanding of the system, but also revealed the next constraint. Rather than searching for a single root cause, the process became one of progressively eliminating the most significant limitation until the pipeline operated reliably at full scale.
