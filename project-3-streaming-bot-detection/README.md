@@ -8,9 +8,11 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 | ------- | -------- |
 | **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
 | **[2. Follow One Session](#2-follow-one-session)** | 2.1 Inspect the Original Clickstream<br>2.2 Observe Flink's Keyed Session State<br>2.3 Watch the Bot Score Evolve<br>2.4 View the Final Session State<br>2.5 Explain the Final Score |
-| **[3. Streaming Capabilities](#3-streaming-capabilities)** | 3.1 Data Flow<br>3.2 Stream Processing<br>3.3 Outputs<br>3.4 Reliability<br>3.5 Operations<br>3.6 Extensibility |
+| **[3. Streaming Resilience](#3-streaming-resilience)** | 3.1 Invalid Data: Isolate with a Dead-Letter Queue<br>3.2 Late Data: Reorder with Event-Time Buffering and Watermarks<br>3.3 Processing Failures: Recover with Checkpoints<br>3.4 Capacity Mismatch: Decouple Producers and Consumers with a Kafka Topic |
 | **[4. Deployment](#4-deployment)** | 4.1 Prerequisites<br>4.2 Repository Structure<br>4.3 Deployment State Model<br>4.4 Setup<br>4.5 Platform Services<br>4.6 Reset and Teardown |
-| **[5. Results](#5-results)** | 5.1 Kafka Topic Activity<br>5.2 Flink Job Execution<br>5.3 Live Bot Detection Dashboard<br>5.4 Operational Session Scores |
+| **[5. Results](#5-results)** | 5.1 Kafka Topic Activity<br>5.2 Flink Job Execution<br>5.3 Analytical Parquet Output<br>5.4 Operational Session Scores<br>5.5 Live Bot Detection Dashboard |
+| **[6. Reflections and Next Steps](#6-reflections-and-next-steps)** | 6.1 Building an Intuitive Understanding of Streaming<br>6.2 Root Cause Analysis<br>6.3 Future Directions |
+
 
 # 1. What This Project Does
 ## 1.1 Problem Statement
@@ -46,11 +48,11 @@ mindmap
       Avoid feeding bot behavior into recommendation systems or customer profiles.
 ```
 
-The project explores three questions:
+Alongside these technical objectives, the project has a central learning objective:
 
-1. How should historical batch analytics be adapted to stateful stream processing?
-2. How can streaming systems be designed for reliability through replay, checkpointing, and fault tolerance?
-3. How can analytical and operational workloads be supported from a single streaming pipeline?
+> Build an intuitive understanding of how a streaming pipeline works.
+
+Of the three portfolio projects, streaming is the area in which I have the least prior intuition. Building the pipeline provides a practical mental model of how producers, Kafka topics, Flink jobs, state, checkpoints, lag, and backpressure fit together as a continuously running system.
 
 ## 1.2 Inputs and Outputs
 
@@ -357,7 +359,7 @@ bot_score
 This session exhibits consistently short click intervals with very little variation, placing it among the most uniform sessions in the dataset. As a result, its final bot score is **98%**, exceeding the operational threshold of **95%** and causing the session to be classified as a bot.
 
 # 3. Streaming Resilience
-## 3.1 Invalid Events: Validate and Isolate
+## 3.1 Invalid Data: Isolate with a Dead-Letter Queue
 Every event is parsed and validated before it can enter either the analytical or operational pipeline.
 
 ```text
@@ -426,7 +428,7 @@ If parsing or validation fails, the event is published to `clickstream-dlq` with
   "processing_timestamp": "2026-07-11T18:45:06.267926300Z"
 }
 ```
-## 3.2 Delayed Events: Reorder with Flink Watermarks
+## 3.2 Late Data: Reorder with Event-Time Buffering and Watermarks
 
 Events do not always arrive in the order in which they occurred.
 
@@ -479,8 +481,113 @@ This keeps session timers and interval calculations aligned with when the user a
 
 The guarantee is intentionally bounded: events arriving within the configured out-of-orderness allowance are scored in event-time order. Events arriving after the watermark has already passed their timestamp are excluded from live scoring.
 
-## 3.3 Processing Failures: Recover with Flink Checkpoints
+## 3.3 Processing Failures: Recover with Checkpoints
+Checkpointing allows a Flink job to recover after a processing failure without restarting the stream from the beginning.
 
+A checkpoint records a consistent snapshot of source position and in-flight state:
+
+```text
+Checkpoint component      What it preserves
+----------------------    -----------------------------------------------
+Kafka source position     The next Kafka offset each source partition reads
+Active session state      Active sessions, pending events, and scheduled timers
+```
+
+A streaming system must decide how processing and offset commits are coordinated.
+
+### At-most-once (commit offset, then process)
+```text
+Commit offset for Event 101       Process Event 101
+              │                           │
+              ▼                           ▼
+──────────────●───────────────X───────────●───────────────────────── Time
+                              Failure
+
+Restart:
+The committed offset says Event 101 was already handled,
+so consumption resumes at Event 102.
+
+Result:
+Event 101 is lost.
+```
+
+### At-least-once (process, then commit offset)
+```text
+Process Event 101                 Commit offset after Event 101
+        │                                  │
+        ▼                                  ▼
+────────●──────────────────X───────────────●──────────────────────── Time
+                           Failure
+
+Restart:
+The committed offset still points to Event 101,
+so Event 101 is processed again.
+
+Result:
+Event 101 is duplicated.
+```
+
+### Exactly-once (process everything as one transaction)
+```text
+BEGIN TRANSACTION
+        │
+        ├── Process Event 101
+        ├── Update session state
+        └── Commit offset
+        │
+        ▼
+      COMMIT
+
+Result:
+Either every step is committed together or none is,
+so Event 101 affects the final result exactly once.
+```
+
+### This Project
+
+The validation and operational Flink jobs create a checkpoint every 60 seconds and use Flink’s exactly-once checkpointing mode.
+
+```java
+env.enableCheckpointing(60_000);
+
+env.getCheckpointConfig().setCheckpointingMode(
+        CheckpointingMode.EXACTLY_ONCE
+);
+```
+
+The same checkpointing mechanism is used in two jobs:
+
+```text
+Flink job              Checkpointed information
+--------------------   --------------------------------------------------
+Validation             Kafka source offsets and validation progress
+Operational scorer     Kafka source offsets, active sessions, delayed-event
+                       buffers, running statistics, and session timers
+```
+
+This means Flink can recover its source position and internal state from the latest completed checkpoint. The external outputs still use practical delivery patterns: Kafka clean/DLQ writes are at-least-once, PostgreSQL bot scores use upserts, and Parquet output coordinates file commits with checkpoints.
+
+## 3.4 Capacity Mismatch: Decouple Producers and Consumers with a Kafka Topic
+
+Without a durable topic between the producer and consumer, a slow consumer forces the system to choose how to handle new events:
+```text
+Producer ──▶ Consumer
+                │
+                ▼
+          Consumer slows
+
+Producer must wait, reject events, or drop them
+```
+A Kafka topic decouples the producer’s throughput from the consumer’s throughput by providing a durable buffer between them:
+```text
+Producer ──▶ Kafka topic ──▶ Consumer
+               ▲
+               │
+         durable backlog
+```
+The producer can continue writing events to Kafka while the consumer processes them at its own speed. If the consumer falls behind, the backlog remains in the topic and consumer lag increases.
+
+This is how **backpressure** is absorbed at the system boundary: the consumer slows down, while Kafka holds the excess events until the consumer can catch up.
 
 # 4. Deployment
 
@@ -647,6 +754,66 @@ The teardown script stops the Docker Compose platform, removes service volumes, 
 # 5. Results
 
 ## 5.1 Kafka Topic Activity
+```mermaid
+flowchart LR
+
+    DATA([Clickstream Data])
+
+    subgraph STREAMING["Streaming Data Platform"]
+
+        REPLAY[Replay Engine]
+
+        RAW[("Kafka Topic<br>Raw Clickstream")]
+
+        VALIDATE["Flink Job<br>Schema Validation"]
+
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
+
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
+
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
+
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
+
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> PARQUET
+
+    OPERATIONAL_JOB --> POSTGRES
+
+    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    class RAW,CLEAN,DLQ highlighted
+```
 
 <img src="assets/redpanda_3_topics.png" alt="Redpanda Console showing raw clean and DLQ clickstream topics" width="1000">
 
@@ -656,40 +823,375 @@ Redpanda Console shows the raw, clean, and dead-letter Kafka topics used by the 
 
 The raw topic view shows replayed clickstream events arriving as JSON messages before validation. This provides a direct check that historical rows are being converted into an inspectable event stream.
 
+<img src="assets/redpanda_consumer_partitions.png" alt="Redpanda Console showing the clickstream-raw topic split across four partitions, with separate offsets and lag tracked for each partition" width="1000">
+
+Redpanda Console shows the raw topic split across four partitions, allowing Kafka and Flink to process the stream in parallel while tracking an independent offset and lag for each partition.
+
 ## 5.2 Flink Job Execution
+```mermaid
+flowchart LR
+
+    DATA([Clickstream Data])
+
+    subgraph STREAMING["Streaming Data Platform"]
+
+        REPLAY[Replay Engine]
+
+        RAW[("Kafka Topic<br>Raw Clickstream")]
+
+        VALIDATE["Flink Job<br>Schema Validation"]
+
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
+
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
+
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
+
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
+
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> PARQUET
+
+    OPERATIONAL_JOB --> POSTGRES
+
+    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    class VALIDATE,ANALYTICS_JOB,OPERATIONAL_JOB highlighted
+```
 
 <img src="assets/flink.png" alt="Flink Web UI showing running validation analytics and operational jobs" width="1000">
 
 The Flink Web UI shows the running validation, analytical Parquet writer, and operational bot-scoring jobs. This view confirms that the platform is processing the clean stream continuously and maintaining checkpointed state.
 
-## 5.3 Live Bot Detection Dashboard
+## 5.3 Analytical Parquet Output
+```mermaid
+flowchart LR
 
-<img src="assets/results/grafana_dashboard.png" alt="Grafana dashboard showing live bot detection metrics" width="1000">
+    DATA([Clickstream Data])
 
-The Grafana dashboard visualizes live bot detection metrics from PostgreSQL, including active session scores, stream-level bot rates, and operational health signals.
+    subgraph STREAMING["Streaming Data Platform"]
+
+        REPLAY[Replay Engine]
+
+        RAW[("Kafka Topic<br>Raw Clickstream")]
+
+        VALIDATE["Flink Job<br>Schema Validation"]
+
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
+
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
+
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
+
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
+
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> PARQUET
+
+    OPERATIONAL_JOB --> POSTGRES
+
+    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    class PARQUET highlighted
+```
+
+The analytical branch writes validated clickstream events to partitioned Parquet files.
+
+```text
+datasets/analytics/
+└── clickstream/
+    └── event_date=2019-10-18/
+        ├── part-00000-....parquet
+        └── part-00001-....parquet
+```
+
+The directory tree shows the partitioned Parquet output, and a DuckDB query confirms the files can be read as analytical data:
+
+```sql
+SELECT
+    COUNT(*),
+    MIN(event_time),
+    MAX(event_time)
+FROM read_parquet('datasets/analytics/**/*.parquet');
+```
 
 ## 5.4 Operational Session Scores
+```mermaid
+flowchart LR
 
-<img src="assets/results/session_scores.png" alt="PostgreSQL query showing operational session bot scores" width="1000">
+    DATA([Clickstream Data])
 
-The operational scoring table stores continuously updated session-level bot scores. This output connects the live streaming pipeline back to the session walkthrough in Section 2.
+    subgraph STREAMING["Streaming Data Platform"]
 
-python3 streaming/data_replay.py \
-    --sink kafka \
-    --speed 100000x \
-    --quiet \
-    --progress-every 100000
+        REPLAY[Replay Engine]
 
-let's show the shape of the session state and how it progresses.
+        RAW[("Kafka Topic<br>Raw Clickstream")]
 
-MEMORY LEAKS, WRONG IMAGE MEMORY EXPLOSION, DUPLICATE PROCESS PATHS
+        VALIDATE["Flink Job<br>Schema Validation"]
 
-Yes, that’s basically right, with one important distinction between the three designs.
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
 
-1. **Original temporary-view SQL design:** both the clean sink and DLQ sink referenced the same parsed and validated temporary view. Because a temporary view is a query definition rather than stored results, Flink’s physical `EXPLAIN` plan showed duplication of the upstream computation across the two sink branches. In practice, this meant the same source event could go through the `JSON_VALUE`, `TRY_CAST`, and validation `CASE` expressions once for the clean branch and again for the DLQ branch.
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
 
-2. **Materialized Kafka design:** the parsed and validated results were written to intermediate Kafka topics. This meant the expensive validation step could be computed once and stored before routing. However, every event then incurred additional Kafka writes, reads, serialization, broker disk and network I/O, and consumer-offset management. The validated topic was also read independently by the clean and DLQ consumer groups.
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
 
-3. **DataStream design:** the Java job consumes each raw event once, parses it once, validates it once, and immediately routes it either to the main clean output or to the DLQ side output. It therefore avoids both the duplicated SQL computation and the intermediate Kafka materialization hops.
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
 
-The improvement is not that DataStream is inherently faster than SQL. It is faster in this implementation because it guarantees one direct processing pass over each event, followed by immediate branching.
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> PARQUET
+
+    OPERATIONAL_JOB --> POSTGRES
+
+    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    class POSTGRES highlighted
+```
+
+The operational scorer writes two tables to PostgreSQL. The first table, `session_bot_scores`, stores the latest score and state for each user session.
+
+```text
+user_session                          status  events  intervals  mean_ms  min_ms  sd_ms  bot_score  is_bot
+------------------------------------  ------  ------  ---------  -------  ------  -----  ---------  ------
+d1f516da-7272-461a-bf97-05f9d06a8187  closed      10          9     5444    2000   2698     0.9833  true
+8e2f...sample-session                 active       7          6     8100    3000   4120     0.7433  false
+43aa...sample-session                 active      14         13     3900    1000   1580     0.9567  true
+```
+
+The second PostgreSQL table, `stream_bot_metrics`, stores aggregate bot-rate metrics for dashboard windows.
+
+```text
+window_start          window_end            active_sessions  bot_sessions  bot_rate  avg_bot_score
+-------------------   -------------------   ---------------  ------------  --------  -------------
+2019-10-18 20:14:00   2019-10-18 20:15:00                42            8    0.1905         0.4121
+2019-10-18 20:15:00   2019-10-18 20:16:00                37           11    0.2973         0.5388
+```
+
+## 5.5 Live Bot Detection Dashboard
+```mermaid
+flowchart LR
+
+    DATA([Clickstream Data])
+
+    subgraph STREAMING["Streaming Data Platform"]
+
+        REPLAY[Replay Engine]
+
+        RAW[("Kafka Topic<br>Raw Clickstream")]
+
+        VALIDATE["Flink Job<br>Schema Validation"]
+
+        CLEAN[("Kafka Topic<br>Validated Clickstream")]
+
+        DLQ[("Kafka Topic<br>Dead Letter Queue")]
+
+        ANALYTICS_JOB["Flink Job<br>Parquet Writer"]
+
+        OPERATIONAL_JOB["Flink Job<br>Bot Scorer"]
+
+        REPLAY --> RAW
+        RAW --> VALIDATE
+        VALIDATE --> CLEAN
+        VALIDATE --> DLQ
+
+        CLEAN --> ANALYTICS_JOB
+        CLEAN --> OPERATIONAL_JOB
+
+    end
+
+    subgraph ANALYTICAL["Analytical Pipeline"]
+
+        PARQUET[(Parquet<br>Historical Data Store)]
+
+        ICEBERG[(Iceberg*<br>Historical Data Store)]
+
+        PARQUET -.-> ICEBERG
+
+    end
+
+    subgraph OP_PIPELINE["Operational Pipeline"]
+
+        POSTGRES[(Postgres<br>Live Bot Scoring)]
+
+        GRAFANA["Grafana<br>Live Dashboard"]
+
+        POSTGRES --> GRAFANA
+
+    end
+
+    DATA --> REPLAY
+
+    ANALYTICS_JOB --> PARQUET
+
+    OPERATIONAL_JOB --> POSTGRES
+
+    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    class GRAFANA highlighted
+```
+<img src="assets/grafana_partial.png" alt="Grafana dashboard showing live bot detection metrics" width="1000">
+
+The Grafana dashboard visualizes live bot detection metrics from PostgreSQL, including active session scores from `session_bot_scores`, stream-level bot rates from `stream_bot_metrics`, and operational health signals.
+
+# 6. Reflections and Next Steps
+## 6.1 Building an Intuitive Understanding of Streaming
+
+The central learning objective of this project is to build an intuitive understanding of how a streaming pipeline works. I begin by asking:
+
+> **If I were to demonstrate a true streaming project, what components, features, and capabilities would it need to include?**
+
+```text
+Streaming Project
+
+├── 1. Data Flow
+│     ├── Unbounded event stream
+│     ├── Message broker (Kafka)
+│     ├── Multiple producers
+│     └── Multiple consumers
+│
+├── 2. Stream Processing
+│     ├── Stateful processing
+│     ├── Windowing
+│     ├── Event time + watermarks
+│     └── Non-trivial transformations
+│
+├── 3. Outputs
+│     ├── Live serving
+│     ├── Persistent storage
+│     └── Replay
+│
+├── 4. Reliability
+│     ├── Offset management
+│     ├── Delivery semantics
+│     ├── Validation
+│     └── Dead letter queue
+│
+├── 5. Operations
+│     ├── Consumer lag
+│     ├── Throughput & latency
+│     ├── Backpressure
+│     └── Horizontal scaling
+│
+└── 6. Nice to Have
+      └── Schema evolution
+```
+
+Building these capabilities turns the checklist into a practical mental model of how the pieces work together. Many real-world systems are naturally streams: users click, transactions occur, and machines emit data continuously. A streaming platform responds to that reality by processing events while they are still occurring. The trade-off is complexity: more components remain continuously in motion, maintain state, operate at different speeds, and must recover from malformed data, delayed events, capacity mismatches, and failure.
+
+## 6.2 Root Cause Analysis
+
+Integrating the complete streaming platform exposed several problems that only became visible once the system was running end to end. Resolving them required an iterative process of observation, hypothesis, experimentation, and measurement.
+
+```text
+1. Platform instability
+   └── Memory profiling suggested that the runtime environment itself
+       was contributing to excessive memory usage. Replacing the
+       emulated amd64 Flink image with a native ARM image confirmed
+       that the environment was part of the problem.
+
+2. Runaway memory growth
+   └── With the runtime stabilized, profiling showed that the
+       operational job was retaining more state than necessary,
+       leading to further reductions in memory usage and checkpoint
+       size.
+
+3. Throughput limitations
+   └── Once the platform was stable, consumer lag and Flink
+       backpressure identified the components limiting throughput,
+       allowing replay, validation, and PostgreSQL writes to be
+       optimized in turn.
+```
+
+Each investigation produced a new understanding of the system, but also revealed the next constraint. Rather than searching for a single root cause, the process became one of progressively eliminating the most significant limitation until the pipeline operated reliably at full scale.
+
+## 6.3 Future Directions
+
+This project completes the three-stage progression of the portfolio: building a modern lakehouse, migrating it to the cloud, and extending it into a real-time streaming platform. Rather than continuing to add infrastructure or operational complexity, the focus now shifts from understanding data engineering systems to applying them to new problems and domains.

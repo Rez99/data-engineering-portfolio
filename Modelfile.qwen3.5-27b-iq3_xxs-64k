@@ -1,3 +1,0 @@
-FROM /Users/rezwanhoppe-islam/.ollama/models/blobs/sha256-b694e54fe124e299e1342a9f0b81f1a51e3c8bbccf11c0bd94394b28cc8ae2f9
-
-PARAMETER num_ctx 65536
