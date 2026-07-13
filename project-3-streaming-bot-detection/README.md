@@ -356,82 +356,131 @@ bot_score
 
 This session exhibits consistently short click intervals with very little variation, placing it among the most uniform sessions in the dataset. As a result, its final bot score is **98%**, exceeding the operational threshold of **95%** and causing the session to be classified as a bot.
 
-# 3. Streaming Capabilities
+# 3. Streaming Resilience
+## 3.1 Invalid Events: Validate and Isolate
+Every event is parsed and validated before it can enter either the analytical or operational pipeline.
 
-The workflow in Section 1 describes how data moves through the platform. This section highlights the core streaming capabilities demonstrated by the implementation.
+```text
+Event type           Destination
+-----------------    -------------------
+Valid                clickstream-clean
+Invalid              clickstream-dlq
+```
 
-## 3.1 Data Flow
+Valid events continue through the platform. Invalid events are diverted to the Dead Letter Queue, preventing malformed data from disrupting downstream processing while preserving the rejected record for later inspection, correction, or reprocessing.
 
-The platform ingests an unbounded stream of clickstream events through Kafka. Historical data is replayed to simulate a production event stream, validated, and published to a clean topic for downstream consumers. Independent analytical and operational pipelines consume the same validated stream without interfering with one another.
+### Raw Event
 
-**Capabilities**
+The replay engine publishes source records to `clickstream-raw` as JSON.
 
-- Continuous event stream: historical clickstream rows are replayed as live events so the pipeline behaves like an always-on production feed rather than a one-time batch load.
-- Kafka topics: raw, clean, and DLQ topics separate ingestion, validation, and error handling concerns while preserving a durable event log for downstream consumers.
-- Session-keyed topic partitioning: raw and clean Kafka records are keyed by `user_session`, allowing Flink to consume in parallel while keeping events from the same session on the same topic partition.
-- Multiple producers and consumers: event replay, validation, Parquet storage, bot scoring, and dashboarding operate as independent components connected through Kafka.
+```json
+{
+  "event_time": "2019-10-31 23:58:57 UTC",
+  "event_type": "view",
+  "product_id": "1005205",
+  "category_id": "2053013555631882655",
+  "category_code": "electronics.smartphone",
+  "brand": "oppo",
+  "price": "256.74",
+  "user_id": "512789086",
+  "user_session": "cc782b99-88ab-4573-8311-c62e1d447757"
+}
+```
 
----
+### Clean Event
 
-## 3.2 Stream Processing
+If validation succeeds, the event is published to `clickstream-clean`.
 
-Unlike batch processing, the operational pipeline maintains state while sessions are still active. Running statistics are updated after every event, allowing the bot score to evolve continuously until the session expires.
+```json
+{
+  "event_time": "2019-10-31 23:58:57 UTC",
+  "event_type": "view",
+  "product_id": "1005205",
+  "category_id": "2053013555631882655",
+  "category_code": "electronics.smartphone",
+  "brand": "oppo",
+  "price": "256.74",
+  "user_id": "512789086",
+  "user_session": "cc782b99-88ab-4573-8311-c62e1d447757"
+}
+```
 
-**Capabilities**
+### Dead-Letter Event
 
-- Stateful processing: the bot scorer keeps running per-session statistics instead of recalculating from the full click history after each event.
-- Session windows: inactivity-based session closure mirrors the user-session logic from the historical dataset and lets the stream decide when a session is complete.
-- Real-time scoring: bot scores are recalculated as events arrive, so suspicious sessions can be flagged before the session has fully ended.
+If parsing or validation fails, the event is published to `clickstream-dlq` with the reason for rejection.
 
----
+```json
+{
+  "original_payload": {
+    "event_time": "not-a-timestamp",
+    "event_type": "view",
+    "product_id": "26403676",
+    "category_id": "2053013563651392361",
+    "category_code": "",
+    "brand": "lucente",
+    "price": "216.48",
+    "user_id": "520815996",
+    "user_session": "76432830-1f65-47b2-bac8-bafe06828019"
+  },
+  "failure_reason": "invalid event_time",
+  "processing_timestamp": "2026-07-11T18:45:06.267926300Z"
+}
+```
+## 3.2 Delayed Events: Reorder with Flink Watermarks
 
-## 3.3 Outputs
+Events do not always arrive in the order in which they occurred.
 
-The same validated event stream supports both analytical and operational workloads. Historical events are persisted for offline analysis, while live bot scores are continuously exposed for operational monitoring.
+For example, the replay engine may delay Event 4 from the real session followed in Section 2:
 
-**Capabilities**
+```text id="l6k9qm"
+Source event    Event time             Notes
+------------    -------------------    ----------------
+Event 3         2019-10-18 20:14:23
+Event 5         2019-10-18 20:14:32
+Event 4         2019-10-18 20:14:29    ← delayed event
+```
 
-- Historical data storage: validated events are written to Parquet so the same stream can support offline analytics, replay, and future model development.
-- Live dashboards: operational bot metrics are written to PostgreSQL and visualized while the pipeline is running.
-- Shared event stream: analytical and operational workloads consume the clean Kafka topic independently, avoiding duplicate ingestion logic.
+Flink processes time-based behavior using the timestamp stored in each record rather than the wall-clock time at which the event arrives.
 
----
+```text id="xb5fnd"
+Event time         When the click occurred
+Processing time    When Flink processed it
+```
 
-## 3.4 Reliability
+The operational scorer assigns timestamps from `event_time` and uses a 5-second bounded out-of-orderness watermark.
 
-Schema validation separates malformed events into a Dead Letter Queue before downstream processing. Replay and Flink checkpointing allow deterministic testing and recovery following failures.
+> A watermark tells Flink: “I have probably received all events that occurred before this timestamp, so time-based processing can now move forward.”
 
-**Capabilities**
-- Schema validation: malformed or incomplete clickstream records are rejected before they can corrupt analytical datasets or bot-scoring state.
-- Dead Letter Queue: invalid events are preserved in a separate Kafka topic so failures can be inspected without blocking valid traffic.
-- Replay: the replay engine can rerun the same source data at configurable speeds, making behavior reproducible during development and testing.
-- Checkpointing: Flink checkpoints preserve processing progress and session state so jobs can recover after failure without starting from scratch.
+```text id="0srzl5"
+Highest event time observed     20:14:32
+Out-of-order allowance         -       5s
+Watermark                       20:14:27
+```
 
----
+Because the delayed `20:14:29` event is still ahead of the `20:14:27` watermark, it remains eligible for live scoring.
 
-## 3.5 Operations
+The scorer briefly buffers events by `user_session` and processes them in event-time order once the watermark reaches their timestamps.
 
-Operational dashboards expose the health of the streaming platform in real time. Configurable replay speeds allow the system to be exercised under production-like event rates while monitoring throughput and latency.
+```text id="cr924u"
+Streamed to bot scorer
 
-**Capabilities**
+20:14:23
+20:14:32
+20:14:29
 
-- Live monitoring: dashboards expose bot metrics and pipeline behavior while events are flowing through the system.
-- Replay at configurable speed: the replay engine can accelerate historical traffic to stress the pipeline and observe how it behaves under higher event rates.
-- Operational observability: throughput, latency, and health signals make the streaming system inspectable rather than a black-box data mover.
+Processed by bot scorer
 
----
+20:14:23
+20:14:29
+20:14:32
+```
 
-## 3.6 Extensibility
+This keeps session timers and interval calculations aligned with when the user activity actually occurred rather than with temporary delays in delivery or processing.
 
-The platform has been designed so additional producers, consumers, and event schemas can be introduced without changing the overall architecture.
+The guarantee is intentionally bounded: events arriving within the configured out-of-orderness allowance are scored in event-time order. Events arriving after the watermark has already passed their timestamp are excluded from live scoring.
 
-Future enhancements include Avro-based schema evolution, a Schema Registry, and additional operational consumers.
+## 3.3 Processing Failures: Recover with Flink Checkpoints
 
-**Capabilities**
-
-- Schema evolution: future Avro schemas would allow clickstream events to change over time without breaking existing consumers.
-- Schema Registry: a registry would enforce compatibility rules between producers and consumers as the event contract evolves.
-- Pluggable consumers: new operational or analytical consumers can subscribe to the clean topic without changing the producer or validation layers.
 
 # 4. Deployment
 

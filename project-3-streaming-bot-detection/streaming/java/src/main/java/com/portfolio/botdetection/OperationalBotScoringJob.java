@@ -33,7 +33,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,6 +51,7 @@ public class OperationalBotScoringJob {
     private static final String DEFAULT_BOT_CONFIG_PATH = "/opt/flink/datasets/reference/bot_config.json";
     private static final String DEFAULT_NORMALIZATION_VALUES_PATH =
             "/opt/flink/generated/normalization_values.csv";
+    private static final long DEFAULT_OUT_OF_ORDERNESS_MILLIS = 5_000L;
 
     public static void main(String[] args) throws Exception {
         JobConfig config = JobConfig.fromArgs(args);
@@ -72,7 +76,7 @@ public class OperationalBotScoringJob {
                 .build();
 
         WatermarkStrategy<ClickEvent> watermarkStrategy = WatermarkStrategy
-                .<ClickEvent>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                .<ClickEvent>forBoundedOutOfOrderness(Duration.ofMillis(config.outOfOrdernessMillis))
                 .withIdleness(Duration.ofSeconds(30))
                 .withTimestampAssigner(
                         (SerializableTimestampAssigner<ClickEvent>) (event, timestamp) -> event.eventTimeMillis);
@@ -223,6 +227,7 @@ public class OperationalBotScoringJob {
             extends KeyedProcessFunction<String, ClickEvent, SessionUpdate> {
         private final BotConfig config;
         private transient ValueState<SessionState> state;
+        private transient ValueState<BufferedEvents> pendingEvents;
         private transient long activeSessions;
         private transient long retainedEventTimestamps;
 
@@ -234,6 +239,8 @@ public class OperationalBotScoringJob {
         public void open(org.apache.flink.configuration.Configuration parameters) {
             state = getRuntimeContext().getState(
                     new ValueStateDescriptor<>("active-session", SessionState.class));
+            pendingEvents = getRuntimeContext().getState(
+                    new ValueStateDescriptor<>("pending-events", BufferedEvents.class));
             getRuntimeContext().getMetricGroup().gauge("activeSessions", () -> activeSessions);
             getRuntimeContext().getMetricGroup().gauge(
                     "retainedEventTimestamps", () -> retainedEventTimestamps);
@@ -244,10 +251,100 @@ public class OperationalBotScoringJob {
                 ClickEvent event,
                 KeyedProcessFunction<String, ClickEvent, SessionUpdate>.Context context,
                 Collector<SessionUpdate> out) throws Exception {
+            if (event.eventTimeMillis <= context.timerService().currentWatermark()) {
+                return;
+            }
+
+            BufferedEvents buffered = pendingEvents.value();
+            if (buffered == null) {
+                buffered = new BufferedEvents();
+            }
+            buffered.eventTimeMillis.add(event.eventTimeMillis);
+            pendingEvents.update(buffered);
+            retainedEventTimestamps++;
+            context.timerService().registerEventTimeTimer(event.eventTimeMillis);
+            drainReadyEvents(context.timerService().currentWatermark(), context.getCurrentKey(), context, out);
+        }
+
+        @Override
+        public void onTimer(
+                long timestamp,
+                KeyedProcessFunction<String, ClickEvent, SessionUpdate>.OnTimerContext context,
+                Collector<SessionUpdate> out) throws Exception {
+            drainReadyEvents(timestamp, context.getCurrentKey(), context, out);
+            SessionState current = state.value();
+            if (current != null && timestamp == current.closeTimerMillis) {
+                out.collect(current.toUpdate("closed", timestamp));
+                removeFromInstrumentation(current);
+                state.clear();
+            }
+        }
+
+        private void drainReadyEvents(
+                long watermarkMillis,
+                String userSession,
+                KeyedProcessFunction<String, ClickEvent, SessionUpdate>.Context context,
+                Collector<SessionUpdate> out) throws Exception {
+            BufferedEvents buffered = pendingEvents.value();
+            if (buffered == null || buffered.eventTimeMillis.isEmpty()) {
+                return;
+            }
+
+            Collections.sort(buffered.eventTimeMillis);
+            BufferedEvents remaining = new BufferedEvents();
+            for (Long eventTimeMillis : buffered.eventTimeMillis) {
+                if (eventTimeMillis <= watermarkMillis) {
+                    processOrderedEvent(userSession, eventTimeMillis, context, out);
+                    retainedEventTimestamps = Math.max(0L, retainedEventTimestamps - 1L);
+                } else {
+                    remaining.eventTimeMillis.add(eventTimeMillis);
+                }
+            }
+
+            if (remaining.eventTimeMillis.isEmpty()) {
+                pendingEvents.clear();
+            } else {
+                pendingEvents.update(remaining);
+            }
+        }
+
+        private void drainReadyEvents(
+                long watermarkMillis,
+                String userSession,
+                KeyedProcessFunction<String, ClickEvent, SessionUpdate>.OnTimerContext context,
+                Collector<SessionUpdate> out) throws Exception {
+            BufferedEvents buffered = pendingEvents.value();
+            if (buffered == null || buffered.eventTimeMillis.isEmpty()) {
+                return;
+            }
+
+            Collections.sort(buffered.eventTimeMillis);
+            BufferedEvents remaining = new BufferedEvents();
+            for (Long eventTimeMillis : buffered.eventTimeMillis) {
+                if (eventTimeMillis <= watermarkMillis) {
+                    processOrderedEvent(userSession, eventTimeMillis, context, out);
+                    retainedEventTimestamps = Math.max(0L, retainedEventTimestamps - 1L);
+                } else {
+                    remaining.eventTimeMillis.add(eventTimeMillis);
+                }
+            }
+
+            if (remaining.eventTimeMillis.isEmpty()) {
+                pendingEvents.clear();
+            } else {
+                pendingEvents.update(remaining);
+            }
+        }
+
+        private void processOrderedEvent(
+                String userSession,
+                long eventTimeMillis,
+                KeyedProcessFunction<String, ClickEvent, SessionUpdate>.Context context,
+                Collector<SessionUpdate> out) throws Exception {
             SessionState current = state.value();
 
             if (current != null
-                    && event.eventTimeMillis - current.lastEventTimeMillis > config.timeoutMillis) {
+                    && eventTimeMillis - current.lastEventTimeMillis > config.timeoutMillis) {
                 out.collect(current.toUpdate("closed", current.closeTimerMillis));
                 removeFromInstrumentation(current);
                 state.clear();
@@ -255,12 +352,11 @@ public class OperationalBotScoringJob {
             }
 
             if (current == null) {
-                current = SessionState.start(event.userSession, event.eventTimeMillis);
+                current = SessionState.start(userSession, eventTimeMillis);
                 activeSessions++;
-                retainedEventTimestamps++;
             } else {
                 long previousCloseTimerMillis = current.closeTimerMillis;
-                current.addEvent(event.eventTimeMillis);
+                current.addEvent(eventTimeMillis);
                 if (current.lastEventTimeMillis + config.timeoutMillis != previousCloseTimerMillis) {
                     context.timerService().deleteEventTimeTimer(previousCloseTimerMillis);
                 }
@@ -273,22 +369,41 @@ public class OperationalBotScoringJob {
             out.collect(current.toUpdate("active", null));
         }
 
-        @Override
-        public void onTimer(
-                long timestamp,
+        private void processOrderedEvent(
+                String userSession,
+                long eventTimeMillis,
                 KeyedProcessFunction<String, ClickEvent, SessionUpdate>.OnTimerContext context,
                 Collector<SessionUpdate> out) throws Exception {
             SessionState current = state.value();
-            if (current != null && timestamp == current.closeTimerMillis) {
-                out.collect(current.toUpdate("closed", timestamp));
+
+            if (current != null
+                    && eventTimeMillis - current.lastEventTimeMillis > config.timeoutMillis) {
+                out.collect(current.toUpdate("closed", current.closeTimerMillis));
                 removeFromInstrumentation(current);
                 state.clear();
+                current = null;
             }
+
+            if (current == null) {
+                current = SessionState.start(userSession, eventTimeMillis);
+                activeSessions++;
+            } else {
+                long previousCloseTimerMillis = current.closeTimerMillis;
+                current.addEvent(eventTimeMillis);
+                if (current.lastEventTimeMillis + config.timeoutMillis != previousCloseTimerMillis) {
+                    context.timerService().deleteEventTimeTimer(previousCloseTimerMillis);
+                }
+            }
+
+            current.botScore = config.score(current.meanClickIntervalMs(), current.minClickIntervalMs, current.sdClickIntervalMs());
+            current.closeTimerMillis = current.lastEventTimeMillis + config.timeoutMillis;
+            state.update(current);
+            context.timerService().registerEventTimeTimer(current.closeTimerMillis);
+            out.collect(current.toUpdate("active", null));
         }
 
         private void removeFromInstrumentation(SessionState current) {
             activeSessions = Math.max(0L, activeSessions - 1L);
-            retainedEventTimestamps = Math.max(0L, retainedEventTimestamps - 1L);
         }
     }
 
@@ -380,6 +495,13 @@ public class OperationalBotScoringJob {
             event.userSession = userSession;
             event.eventTimeMillis = parseEventTimeMillis(eventTime);
             return event;
+        }
+    }
+
+    public static class BufferedEvents implements Serializable {
+        public List<Long> eventTimeMillis = new ArrayList<>();
+
+        public BufferedEvents() {
         }
     }
 
@@ -549,6 +671,7 @@ public class OperationalBotScoringJob {
         public String botConfigPath = DEFAULT_BOT_CONFIG_PATH;
         public String normalizationValuesPath = DEFAULT_NORMALIZATION_VALUES_PATH;
         public int parallelism = 4;
+        public long outOfOrdernessMillis = DEFAULT_OUT_OF_ORDERNESS_MILLIS;
 
         static JobConfig fromArgs(String[] args) {
             JobConfig config = new JobConfig();
@@ -581,6 +704,9 @@ public class OperationalBotScoringJob {
                     i++;
                 } else if ("--parallelism".equals(arg) && value != null) {
                     config.parallelism = Integer.parseInt(value);
+                    i++;
+                } else if ("--out-of-orderness-ms".equals(arg) && value != null) {
+                    config.outOfOrdernessMillis = Long.parseLong(value);
                     i++;
                 }
             }
