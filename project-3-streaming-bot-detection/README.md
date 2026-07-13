@@ -7,7 +7,7 @@ An end-to-end streaming data platform that transforms e-commerce clickstream eve
 | Section | Contents |
 | ------- | -------- |
 | **[1. What This Project Does](#1-what-this-project-does)** | 1.1 Problem Statement<br>1.2 Inputs and Outputs<br>1.3 End-to-End Workflow |
-| **[2. Follow One Session](#2-follow-one-session)** | 2.1 Inspect the Original Clickstream<br>2.2 Watch the Bot Score Evolve<br>2.3 View the Final Session State<br>2.4 Explain the Final Score |
+| **[2. Follow One Session](#2-follow-one-session)** | 2.1 Inspect the Original Clickstream<br>2.2 Observe Flink's Keyed Session State<br>2.3 Watch the Bot Score Evolve<br>2.4 View the Final Session State<br>2.5 Explain the Final Score |
 | **[3. Streaming Capabilities](#3-streaming-capabilities)** | 3.1 Data Flow<br>3.2 Stream Processing<br>3.3 Outputs<br>3.4 Reliability<br>3.5 Operations<br>3.6 Extensibility |
 | **[4. Deployment](#4-deployment)** | 4.1 Prerequisites<br>4.2 Repository Structure<br>4.3 Deployment State Model<br>4.4 Setup<br>4.5 Platform Services<br>4.6 Reset and Teardown |
 | **[5. Results](#5-results)** | 5.1 Kafka Topic Activity<br>5.2 Flink Job Execution<br>5.3 Live Bot Detection Dashboard<br>5.4 Operational Session Scores |
@@ -208,7 +208,75 @@ As these events are replayed into Kafka, the operational pipeline maintains stat
 
 ---
 
-## 2.2 Watch the Bot Score Evolve
+## 2.2 Observe Flink's Keyed Session State
+
+The operational scoring job partitions the validated stream with `keyBy(user_session)`. That means every event for this session is routed to the same keyed Flink operator, where one compact state object is maintained for the active session.
+
+Flink does not need to retain and rescan the full list of click events. For each key, the scorer updates a few running counters and accumulators:
+
+```text
+State keyed by user_session
+
+user_session = d1f516da-7272-461a-bf97-05f9d06a8187
+
+previous_event_time       = current_event_time
+
+event_count              += 1
+interval_count           += 1
+interval_sum_ms          += current_interval_ms
+interval_sum_squares_ms  += current_interval_ms²
+minimum_interval_ms       = min(minimum_interval_ms, current_interval_ms)
+
+mean_interval_ms          = interval_sum_ms / interval_count
+sd_interval_ms            = derived from interval_sum_squares_ms
+
+session_close_timer       = current_event_time + inactivity_timeout
+```
+
+The first event initializes the keyed state and sets the previous event time, but it does not produce a click interval. Each later event creates one new interval, updates the running accumulators, recalculates the derived mean and sample standard deviation, and resets the inactivity timer.
+
+Using the first three events from this session:
+
+```text
+Event 1 - 20:14:09
+
+previous_event_time = 20:14:09
+event_count        += 1          -> 1
+
+No interval exists yet.
+```
+
+```text
+Event 2 - 20:14:16
+
+current_interval_ms       = 7,000
+event_count              += 1       -> 2
+interval_count           += 1       -> 1
+interval_sum_ms          += 7,000   -> 7,000
+interval_sum_squares_ms  += 7,000²  -> 49,000,000
+minimum_interval_ms       = 7,000
+previous_event_time       = 20:14:16
+```
+
+```text
+Event 3 - 20:14:23
+
+current_interval_ms       = 7,000
+event_count              += 1       -> 3
+interval_count           += 1       -> 2
+interval_sum_ms          += 7,000   -> 14,000
+interval_sum_squares_ms  += 7,000²  -> 98,000,000
+minimum_interval_ms       = min(7,000, 7,000) -> 7,000
+
+mean_interval_ms          = 14,000 / 2 -> 7,000
+sd_interval_ms            = 0
+```
+
+After each event, the derived mean, minimum, and standard deviation are converted to historical percentile ranks and used to recalculate the live bot score shown below. When the inactivity timer fires, the session is marked closed and the final state is persisted to PostgreSQL. Because the implementation intentionally keeps only running statistics rather than every timestamp or interval, per-session state and checkpoint size stay small.
+
+---
+
+## 2.3 Watch the Bot Score Evolve
 
 The bot score changes continuously as additional click intervals become available.
 
@@ -228,7 +296,7 @@ After ~90 minutes of inactivity (corresponding to the 99th percentile of histori
 
 ---
 
-## 2.3 View the Final Session State
+## 2.4 View the Final Session State
 
 ```bash
 docker compose -f infra/compose/postgres.yml exec postgres \
@@ -263,7 +331,7 @@ The operational pipeline stores only the running statistics required for scoring
 
 ---
 
-## 2.4 Explain the Final Score
+## 2.5 Explain the Final Score
 
 The bot score is computed from three behavioral features:
 
