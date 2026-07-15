@@ -9,57 +9,26 @@ LinkedIn: https://www.linkedin.com/in/rezwan-islam/
 
 # Data Engineer
 
-Data engineer and former senior data scientist with 15+ years of experience building analytics platforms, experimentation systems, and machine learning products across e-commerce, healthcare, and technology. Recently completed a production-style data engineering portfolio spanning local lakehouse architecture, cloud infrastructure, and real-time streaming systems. Brings senior analytics judgment, platform thinking, and hands-on engineering ability to build scalable, reliable, and observable data systems.
+Data engineer with 15+ years of experience in product analytics, data science, and modern data platforms across e-commerce, healthcare, and technology. Recently completed a production-style data engineering portfolio spanning local lakehouse architecture, cloud infrastructure, and real-time streaming systems. Combines senior analytics judgment, platform thinking, and hands-on engineering to build scalable, reliable, and observable data systems.
 
 ---
 
 # Technical Skills
 
 ## Languages
+Python • SQL • R
 
-- Python
-- SQL
-- R
+## Streaming & Data Platforms
+Kafka • Flink • Spark • DuckDB • PostgreSQL • Iceberg
 
-## Data Platforms
-
-- Apache Kafka / Redpanda
-- Apache Flink
-- DuckDB
-- Apache Spark
-- Apache Iceberg
-- Apache Parquet
-- PostgreSQL
-- Airflow
+## Transformation & Orchestration
+dbt • Airflow
 
 ## Cloud & Infrastructure
+GCP • Terraform • Docker • Cloud Run • Cloud SQL • Dataproc • Cloud Workflows
 
-- Google Cloud Platform
-- Terraform
-- Docker
-- Cloud Workflows
-- Cloud Run
-- Cloud SQL
-- Dataproc
-
-## Data Modeling
-
-- Batch ETL
-- Streaming ETL
-- dbt
-- Event-time processing
-- Stateful stream processing
-- Data validation
-- Data quality
-- Schema evolution
-
-## Observability
-
-- Grafana
-- Metrics
-- Performance profiling
-- Memory profiling
-- Backpressure analysis
+## Visualization
+Grafana • Superset
 
 ---
 
