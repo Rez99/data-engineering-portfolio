@@ -885,7 +885,7 @@ flowchart LR
 
     OPERATIONAL_JOB --> POSTGRES
 
-    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    classDef highlighted fill:lightpink,stroke:red,stroke-width:3px,color:black
     class VALIDATE,ANALYTICS_JOB,OPERATIONAL_JOB highlighted
 ```
 
@@ -951,7 +951,7 @@ flowchart LR
 
     OPERATIONAL_JOB --> POSTGRES
 
-    classDef highlighted fill:lightpink,stroke:pink,stroke-width:3px,color:black
+    classDef highlighted fill:lightpink,stroke:red,stroke-width:3px,color:black
     class PARQUET highlighted
 ```
 
@@ -1033,7 +1033,7 @@ flowchart LR
 
     OPERATIONAL_JOB --> POSTGRES
 
-    classDef highlighted fill:lightpink,stroke:pink,stroke-width:3px,color:black
+    classDef highlighted fill:lightpink,stroke:red,stroke-width:3px,color:black
     class POSTGRES highlighted
 ```
 
