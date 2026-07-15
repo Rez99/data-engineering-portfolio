@@ -1114,7 +1114,7 @@ flowchart LR
 
     OPERATIONAL_JOB --> POSTGRES
 
-    classDef highlighted fill:lightpink,stroke:pink,stroke-width:3px,color:black
+    classDef highlighted fill:lightpink,stroke:red,stroke-width:3px,color:black
     class GRAFANA highlighted
 ```
 <img src="assets/grafana_partial.png" alt="Grafana dashboard showing live bot detection metrics" width="1000">
