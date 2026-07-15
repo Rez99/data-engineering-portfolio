@@ -283,7 +283,7 @@ After each event, the derived mean, minimum, and standard deviation are converte
 The bot score changes continuously as additional click intervals become available.
 
 ```mermaid
-%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#8B0000,#64748B"}}}}%%
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#d70202,#64748B"}}}}%%
 xychart-beta
     title "Session Bot Score"
     x-axis "Event sequence" [1,2,3,4,5,6,7,8,9,10]
