@@ -811,7 +811,7 @@ flowchart LR
 
     OPERATIONAL_JOB --> POSTGRES
 
-    classDef highlighted fill:lightyellow,stroke:orange,stroke-width:3px,color:black
+    classDef highlighted fill:lightpink,stroke:red,stroke-width:3px,color:black
     class RAW,CLEAN,DLQ highlighted
 ```
 
